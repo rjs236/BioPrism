@@ -26,6 +26,24 @@ from database.db import (
 app = Flask(__name__)
 app.config.from_object(Config)
 
+# WSGI middleware: gracefully handle any Vercel internal prefix rewrites
+class VercelPathFix:
+    def __init__(self, wsgi_app):
+        self.wsgi_app = wsgi_app
+
+    def __call__(self, environ, start_response):
+        path = environ.get('PATH_INFO', '')
+        for prefix in ['/api/index.py', '/api/index']:
+            if path.startswith(prefix):
+                new_path = path[len(prefix):]
+                if not new_path.startswith('/'):
+                    new_path = '/' + new_path
+                environ['PATH_INFO'] = new_path
+                break
+        return self.wsgi_app(environ, start_response)
+
+app.wsgi_app = VercelPathFix(app.wsgi_app)
+
 # Ensure required directories exist
 for folder in [Config.UPLOAD_FOLDER, Config.RESULTS_FOLDER, Config.SAMPLE_DATA_FOLDER, Config.R_SCRIPTS_FOLDER]:
     os.makedirs(folder, exist_ok=True)
