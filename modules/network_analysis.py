@@ -78,7 +78,7 @@ def fetch_string_network(genes, species=9606, confidence_score=400):
     }
 
     try:
-        response = requests.post(string_api_url, data=params, timeout=12)
+        response = requests.post(string_api_url, data=params, timeout=4.0)
         if response.status_code == 200:
             data = response.json()
             if isinstance(data, list) and len(data) > 0:
