@@ -5,7 +5,7 @@ from sklearn.decomposition import PCA
 import plotly.graph_objects as go
 import json
 
-def validate_and_preprocess(expr_filepath, meta_filepath, input_type="auto", handle_missing="impute_median", log2_transform_if_needed=True):
+def validate_and_preprocess(expr_filepath, meta_filepath, input_type="auto", handle_missing="impute_median", log2_transform_if_needed=True, output_dir=None):
     """
     Module 1: Comprehensive Input Validation and Preprocessing.
     Returns:
@@ -225,7 +225,21 @@ def validate_and_preprocess(expr_filepath, meta_filepath, input_type="auto", han
         pca_json = None
 
     # 8. Save Processed Files
-    proc_dir = os.path.dirname(expr_filepath)
+    if output_dir:
+        proc_dir = output_dir
+    else:
+        candidate_dir = os.path.dirname(expr_filepath)
+        import tempfile
+        try:
+            test_file = os.path.join(candidate_dir, f".write_test_{os.getpid()}")
+            with open(test_file, 'w') as f:
+                f.write('ok')
+            os.remove(test_file)
+            proc_dir = candidate_dir
+        except Exception:
+            proc_dir = tempfile.gettempdir()
+
+    os.makedirs(proc_dir, exist_ok=True)
     processed_expr_path = os.path.join(proc_dir, "processed_expression.csv")
     processed_meta_path = os.path.join(proc_dir, "processed_metadata.csv")
 

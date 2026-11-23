@@ -157,7 +157,15 @@ document.addEventListener('DOMContentLoaded', function() {
                 method: 'POST',
                 body: formData
             });
-            const res = await resp.json();
+            const rawText = await resp.text();
+            let res;
+            try {
+                res = JSON.parse(rawText);
+            } catch (jsonErr) {
+                BioPrism.notify(`Server processing error (${resp.status}). Please check matrix format.`, "error");
+                statusText.innerText = `Server error (${resp.status}).`;
+                return;
+            }
             if (res.success) {
                 BioPrism.notify("Dataset uploaded and validated successfully!", "success");
                 setTimeout(() => {

@@ -61,7 +61,7 @@ const BioPrism = {
         Plotly.newPlot(elementId, data, layout, { responsive: true, displayModeBar: true });
     },
 
-    // Fetch JSON helper
+    // Fetch JSON helper with defensive error parsing
     apiPost: async function(url, payload) {
         try {
             const res = await fetch(url, {
@@ -69,7 +69,13 @@ const BioPrism = {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
             });
-            return await res.json();
+            const text = await res.text();
+            try {
+                return JSON.parse(text);
+            } catch (parseErr) {
+                console.error("Non-JSON API response from " + url + ":", text);
+                return { success: false, message: `Server error (${res.status}): Please check parameters.` };
+            }
         } catch (err) {
             console.error("API POST error:", err);
             return { success: false, message: err.toString() };

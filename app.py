@@ -222,7 +222,7 @@ def api_load_demo():
         dataset_name = "Oncogenomics Microarray Demo (Normalized Log2)"
         inferred = "microarray_log2"
 
-    result = validate_and_preprocess(expr_path, meta_path, input_type=inferred)
+    result = validate_and_preprocess(expr_path, meta_path, input_type=inferred, output_dir=sess['dir'])
     if result['success']:
         sess['dataset_name'] = dataset_name
         sess['preproc_info'] = result['info']
@@ -248,7 +248,7 @@ def api_load_geo():
     if not geo_res['success']:
         return jsonify(geo_res)
 
-    result = validate_and_preprocess(geo_res['expr_path'], geo_res['meta_path'], input_type=geo_res['type'])
+    result = validate_and_preprocess(geo_res['expr_path'], geo_res['meta_path'], input_type=geo_res['type'], output_dir=sess['dir'])
     if result['success']:
         sess['dataset_name'] = geo_res['title']
         sess['preproc_info'] = result['info']
@@ -288,7 +288,7 @@ def api_upload():
     expr_file.save(expr_path)
     meta_file.save(meta_path)
 
-    result = validate_and_preprocess(expr_path, meta_path, input_type=input_type, handle_missing=missing_strategy)
+    result = validate_and_preprocess(expr_path, meta_path, input_type=input_type, handle_missing=missing_strategy, output_dir=sess['dir'])
     if result['success']:
         sess['dataset_name'] = expr_file.filename
         sess['preproc_info'] = result['info']
