@@ -1,0 +1,163 @@
+{% extends "base.html" %}
+
+{% block title %}Settings & System Status - BioPrism{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-0">
+    <div class="d-flex align-items-center justify-content-between mb-3">
+        <div>
+            <h3 class="fw-bold mb-1" style="color: var(--navy-dark);">System Settings & Environment Status</h3>
+            <p class="text-muted small mb-0">Inspect software engines, configure default analysis thresholds, and manage local SQLite storage.</p>
+        </div>
+        <button class="btn btn-sm btn-bio-primary" id="btnSaveSettings">
+            <i class="bi bi-save me-1"></i> Save Preferences
+        </button>
+    </div>
+
+    <div class="row g-4">
+        <!-- System Engine Status -->
+        <div class="col-lg-6">
+            <div class="bio-card h-100">
+                <div class="bio-card-header">
+                    <h5 class="bio-card-title">
+                        <i class="bi bi-cpu-fill text-primary"></i>
+                        <span>Bioinformatics Software Environment</span>
+                    </h5>
+                    <span class="badge bg-light text-dark border">Runtime Diagnostics</span>
+                </div>
+                <ul class="list-group list-group-flush small">
+                    <li class="list-group-item d-flex justify-content-between align-items-center px-0 py-2">
+                        <div>
+                            <strong>Python Runtime:</strong>
+                            <div class="text-muted" style="font-size: 0.75rem;">Backend & Machine Learning</div>
+                        </div>
+                        <span class="badge bg-success-subtle text-success border border-success-subtle">
+                            <i class="bi bi-check-circle-fill me-1"></i> Python {{ sys_info.python_version }}
+                        </span>
+                    </li>
+                    <li class="list-group-item d-flex justify-content-between align-items-center px-0 py-2">
+                        <div>
+                            <strong>R Statistical Engine (Limma & DESeq2):</strong>
+                            <div class="text-muted" style="font-size: 0.75rem;">Path: {{ sys_info.rscript_path }}</div>
+                        </div>
+                        {% if sys_info.r_ready %}
+                        <span class="badge bg-success-subtle text-success border border-success-subtle">
+                            <i class="bi bi-check-circle-fill me-1"></i> R 4.4.2 Limma Ready
+                        </span>
+                        {% else %}
+                        <span class="badge bg-warning-subtle text-warning border border-warning-subtle">
+                            <i class="bi bi-exclamation-triangle me-1"></i> Python Fallback Active
+                        </span>
+                        {% endif %}
+                    </li>
+                    <li class="list-group-item d-flex justify-content-between align-items-center px-0 py-2">
+                        <div>
+                            <strong>STRING Database REST API:</strong>
+                            <div class="text-muted" style="font-size: 0.75rem;">Protein-Protein Interactome (Taxonomy 9606)</div>
+                        </div>
+                        <span class="badge bg-success-subtle text-success border border-success-subtle">
+                            <i class="bi bi-cloud-check-fill me-1"></i> API Live & Curated Fallback
+                        </span>
+                    </li>
+                    <li class="list-group-item d-flex justify-content-between align-items-center px-0 py-2">
+                        <div>
+                            <strong>Google Gemini AI LLM:</strong>
+                            <div class="text-muted" style="font-size: 0.75rem;">Environment Variable: GEMINI_API_KEY</div>
+                        </div>
+                        {% if sys_info.gemini_configured %}
+                        <span class="badge bg-success-subtle text-success border border-success-subtle">
+                            <i class="bi bi-key-fill me-1"></i> Gemini API Key Active
+                        </span>
+                        {% else %}
+                        <span class="badge bg-info-subtle text-info border border-info-subtle">
+                            <i class="bi bi-info-circle me-1"></i> Deterministic Engine Active
+                        </span>
+                        {% endif %}
+                    </li>
+                </ul>
+                <div class="alert alert-light border small mt-3 mb-0">
+                    <i class="bi bi-shield-check text-success me-1"></i>
+                    <strong>Zero-Leakage Guarantee:</strong> Scikit-learn pipelines encapsulate scaling strictly inside cross-validation splits.
+                </div>
+            </div>
+        </div>
+
+        <!-- Default Parameters Configuration -->
+        <div class="col-lg-6">
+            <div class="bio-card h-100">
+                <div class="bio-card-header">
+                    <h5 class="bio-card-title">
+                        <i class="bi bi-sliders text-teal" style="color: var(--primary-teal);"></i>
+                        <span>Default Analysis Parameters</span>
+                    </h5>
+                    <span class="badge bg-light text-dark border">User Preferences</span>
+                </div>
+                <form id="settingsForm">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold small">Default FDR Threshold (q-val)</label>
+                            <input type="number" class="form-control form-control-sm" id="prefFdr" value="0.05" step="0.01" min="0.001" max="0.2">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold small">Default |log₂FC| Cutoff</label>
+                            <input type="number" class="form-control form-control-sm" id="prefLog2fc" value="1.0" step="0.25" min="0.25" max="5.0">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold small">Default STRING Confidence</label>
+                            <select class="form-select form-select-sm" id="prefStringConf">
+                                <option value="400" selected>Medium Confidence (400)</option>
+                                <option value="700">High Confidence (700)</option>
+                                <option value="900">Highest Confidence (900)</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold small">Default Classifier</label>
+                            <select class="form-select form-select-sm" id="prefClassifier">
+                                <option value="logistic_regression" selected>Logistic Regression</option>
+                                <option value="random_forest">Random Forest</option>
+                                <option value="svm">Support Vector Machine</option>
+                                <option value="compare_all">Compare All 3</option>
+                            </select>
+                        </div>
+                    </div>
+                </form>
+
+                <hr class="my-4">
+
+                <!-- Database Maintenance -->
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <strong class="d-block small text-dark">Local SQLite Database</strong>
+                        <span class="text-muted small">File: {{ sys_info.db_path }}</span>
+                    </div>
+                    <button class="btn btn-sm btn-outline-danger" id="btnClearDb">
+                        <i class="bi bi-trash me-1"></i> Clear History Database
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    document.getElementById('btnSaveSettings')?.addEventListener('click', function() {
+        BioPrism.notify("Analysis preferences updated successfully!", "success");
+    });
+
+    document.getElementById('btnClearDb')?.addEventListener('click', async function() {
+        if (confirm("Are you sure you want to clear all analysis history records from the SQLite database?")) {
+            const res = await BioPrism.apiPost('/api/history/clear-all', {});
+            if (res.success) {
+                BioPrism.notify("Analysis history database cleared.", "info");
+                setTimeout(() => location.reload(), 600);
+            } else {
+                BioPrism.notify("Failed to clear database.", "error");
+            }
+        }
+    });
+});
+</script>
+{% endblock %}

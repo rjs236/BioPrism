@@ -1,0 +1,266 @@
+{% extends "base.html" %}
+
+{% block title %}Network Analysis & Hub Genes - BioPrism{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-0">
+    <div class="d-flex align-items-center justify-content-between mb-3">
+        <div>
+            <h3 class="fw-bold mb-1" style="color: var(--navy-dark);">Protein Interaction Network & Hub Gene Identification</h3>
+            <p class="text-muted small mb-0">Query the STRING Database API and compute NetworkX topological centralities to rank key candidate biomarkers.</p>
+        </div>
+        <div class="d-flex gap-2">
+            <a href="/api/download/hub_genes{% if session and session.session_id %}?session_id={{ session.session_id }}{% endif %}" class="btn btn-sm btn-outline-secondary" id="btnDownloadHubs" {% if not session or not session.hub_genes %}disabled{% endif %}>
+                <i class="bi bi-download me-1"></i> Hub Genes CSV
+            </a>
+            <a href="/api/download/network_edges{% if session and session.session_id %}?session_id={{ session.session_id }}{% endif %}" class="btn btn-sm btn-outline-secondary" id="btnDownloadEdges" {% if not session or not session.hub_genes %}disabled{% endif %}>
+                <i class="bi bi-share me-1"></i> Edge List CSV
+            </a>
+            <a href="{{ url_for('biomarker_validation_page') }}" class="btn btn-sm btn-bio-primary">
+                Proceed to Biomarker Validation <i class="bi bi-arrow-right ms-1"></i>
+            </a>
+        </div>
+    </div>
+
+    <!-- Parameter Configuration Card -->
+    <div class="bio-card mb-4">
+        <div class="bio-card-header">
+            <h5 class="bio-card-title">
+                <i class="bi bi-share-fill text-cyan" style="color: var(--cyan-accent);"></i>
+                <span>STRING Database & Interactome Settings</span>
+            </h5>
+            <span class="badge bg-light text-dark border">Homo sapiens (Taxonomy 9606)</span>
+        </div>
+
+        <form id="networkForm">
+            <div class="row g-3 align-items-end">
+                <div class="col-md-4">
+                    <label class="form-label fw-semibold small">Interaction Confidence Score Cutoff</label>
+                    <select class="form-select form-select-sm" id="confidenceScoreSelect">
+                        <option value="400" selected>Medium Confidence (Score &ge; 400)</option>
+                        <option value="700">High Confidence (Score &ge; 700)</option>
+                        <option value="900">Highest Confidence (Score &ge; 900)</option>
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label fw-semibold small">Target Species</label>
+                    <input type="text" class="form-control form-control-sm" value="Homo sapiens (Taxonomy: 9606)" readonly>
+                </div>
+                <div class="col-md-4">
+                    <button type="submit" class="btn btn-bio-primary btn-sm w-100" id="btnRunNetwork">
+                        <i class="bi bi-play-fill me-1"></i> Construct & Analyze PPI Network
+                    </button>
+                </div>
+            </div>
+            <div class="mt-2 text-muted small" id="networkStatusText">
+                {% if session and session.network_summary %}
+                    Network loaded with {{ session.network_summary.total_nodes }} proteins and {{ session.network_summary.total_edges }} functional interactions.
+                {% else %}
+                    Click to query STRING API for functional interactions between your top candidate genes.
+                {% endif %}
+            </div>
+        </form>
+    </div>
+
+    <!-- Summary KPI Cards -->
+    <div class="row g-3 mb-4">
+        <div class="col-md-3">
+            <div class="kpi-card">
+                <div class="kpi-icon-box">
+                    <i class="bi bi-diagram-2-fill"></i>
+                </div>
+                <div>
+                    <div class="kpi-value" id="kpiNodes">{% if session and session.network_summary %}{{ session.network_summary.total_nodes }}{% else %}0{% endif %}</div>
+                    <div class="kpi-label">Interactome Nodes</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="kpi-card kpi-cyan">
+                <div class="kpi-icon-box">
+                    <i class="bi bi-bezier2"></i>
+                </div>
+                <div>
+                    <div class="kpi-value" id="kpiEdges">{% if session and session.network_summary %}{{ session.network_summary.total_edges }}{% else %}0{% endif %}</div>
+                    <div class="kpi-label">Functional Edges</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="kpi-card kpi-blue">
+                <div class="kpi-icon-box">
+                    <i class="bi bi-grid-fill"></i>
+                </div>
+                <div>
+                    <div class="kpi-value" id="kpiDensity">{% if session and session.network_summary %}{{ session.network_summary.density }}{% else %}0.00{% endif %}</div>
+                    <div class="kpi-label">Graph Density</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="kpi-card kpi-navy">
+                <div class="kpi-icon-box" style="background-color: #f1f5f9; color: var(--navy-dark);">
+                    <i class="bi bi-trophy-fill"></i>
+                </div>
+                <div>
+                    <div class="kpi-value" id="kpiTopHub" style="font-size: 1.4rem;">
+                        {% if session and session.hub_genes and session.hub_genes|length > 0 %}
+                            {{ session.hub_genes[0].Gene }}
+                        {% else %}
+                            -
+                        {% endif %}
+                    </div>
+                    <div class="kpi-label">Top Ranked Hub Gene</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Interactive Plotly Network Graph -->
+    <div class="bio-card mb-4">
+        <div class="bio-card-header">
+            <h5 class="bio-card-title">
+                <i class="bi bi-share text-teal" style="color: var(--primary-teal);"></i>
+                <span>2D Force-Directed Protein Association Topology</span>
+            </h5>
+            <div class="d-flex align-items-center gap-3">
+                <span class="small text-muted"><span class="badge badge-upreg me-1">●</span> Upregulated</span>
+                <span class="small text-muted"><span class="badge badge-downreg me-1">●</span> Downregulated</span>
+                <span class="small text-muted"><span class="badge bg-warning text-dark me-1">★</span> Top Hub Biomarker</span>
+            </div>
+        </div>
+        <div id="networkPlotContainer" style="height: 520px;">
+            <div class="text-center py-5 text-muted">Construct network to visualize protein interactions.</div>
+        </div>
+    </div>
+
+    <!-- Ranked Candidate Hub Genes Table -->
+    <div class="bio-card">
+        <div class="bio-card-header">
+            <h5 class="bio-card-title">
+                <i class="bi bi-table text-primary"></i>
+                <span>Candidate Hub Biomarkers (Ranked by Composite Hub Score)</span>
+            </h5>
+            <span class="badge bg-light text-dark border">Topology & Significance Weighting</span>
+        </div>
+        <div class="table-responsive">
+            <table class="bio-table" id="hubsTable">
+                <thead>
+                    <tr>
+                        <th>Rank</th>
+                        <th>Gene Symbol</th>
+                        <th>Composite Hub Score</th>
+                        <th>Degree (Interactions)</th>
+                        <th>Betweenness Centrality</th>
+                        <th>log₂ Fold Change</th>
+                        <th>Adjusted p-val (FDR)</th>
+                        <th>Regulation</th>
+                    </tr>
+                </thead>
+                <tbody id="hubsTableBody">
+                    {% if session and session.hub_genes %}
+                        {% for h in session.hub_genes %}
+                        <tr>
+                            <td><span class="badge bg-warning text-dark">#{{ h.Hub_Rank }}</span></td>
+                            <td><strong>{{ h.Gene }}</strong></td>
+                            <td><strong class="text-teal" style="color: var(--primary-teal);">{{ "%.4f"|format(h.Composite_Hub_Score) }}</strong></td>
+                            <td>{{ h.Degree }}</td>
+                            <td>{{ "%.4f"|format(h.Betweenness_Centrality) }}</td>
+                            <td>{{ "%.2f"|format(h.log2FoldChange) }}</td>
+                            <td>{{ "%.2e"|format(h.adj_p_val) }}</td>
+                            <td>
+                                {% if h.Regulation == 'Upregulated' %}
+                                <span class="badge badge-upreg">Upregulated</span>
+                                {% elif h.Regulation == 'Downregulated' %}
+                                <span class="badge badge-downreg">Downregulated</span>
+                                {% else %}
+                                <span class="badge badge-ns">Interacting Partner</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    {% else %}
+                        <tr>
+                            <td colspan="8" class="text-center py-4 text-muted">No hub genes ranked yet. Construct network to calculate centrality metrics.</td>
+                        </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const sid = BioPrism.getSessionId();
+
+    {% if session and session.network_json %}
+        BioPrism.renderPlotly('networkPlotContainer', {{ session.network_json | tojson }});
+    {% endif %}
+
+    document.getElementById('networkForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const btn = document.getElementById('btnRunNetwork');
+        const statusText = document.getElementById('networkStatusText');
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Querying STRING...';
+        statusText.innerText = "Querying STRING API and computing graph centralities...";
+
+        const payload = {
+            session_id: sid,
+            species: 9606,
+            confidence_score: parseInt(document.getElementById('confidenceScoreSelect').value)
+        };
+
+        const res = await BioPrism.apiPost('/api/run-network', payload);
+        if (res.success) {
+            BioPrism.notify("Protein network built & hub genes ranked!", "success");
+            statusText.innerText = res.summary.source_message;
+
+            // Update KPIs
+            document.getElementById('kpiNodes').innerText = res.summary.total_nodes;
+            document.getElementById('kpiEdges').innerText = res.summary.total_edges;
+            document.getElementById('kpiDensity').innerText = res.summary.density;
+            if (res.hub_genes && res.hub_genes.length > 0) {
+                document.getElementById('kpiTopHub').innerText = res.hub_genes[0].Gene;
+            }
+
+            // Render Plotly Network Graph
+            if (res.network_json) {
+                BioPrism.renderPlotly('networkPlotContainer', res.network_json);
+            }
+
+            // Update Hub Genes Table
+            const tbody = document.getElementById('hubsTableBody');
+            tbody.innerHTML = '';
+            (res.hub_genes || []).forEach(h => {
+                const tr = document.createElement('tr');
+                const badge = h.Regulation === 'Upregulated' ? '<span class="badge badge-upreg">Upregulated</span>' :
+                              (h.Regulation === 'Downregulated' ? '<span class="badge badge-downreg">Downregulated</span>' : '<span class="badge badge-ns">Interacting</span>');
+                tr.innerHTML = `
+                    <td><span class="badge bg-warning text-dark">#${h.Hub_Rank}</span></td>
+                    <td><strong>${h.Gene}</strong></td>
+                    <td><strong class="text-teal" style="color: var(--primary-teal);">${Number(h.Composite_Hub_Score).toFixed(4)}</strong></td>
+                    <td>${h.Degree}</td>
+                    <td>${Number(h.Betweenness_Centrality).toFixed(4)}</td>
+                    <td>${Number(h.log2FoldChange).toFixed(2)}</td>
+                    <td>${Number(h.adj_p_val).toExponential(2)}</td>
+                    <td>${badge}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+
+            document.getElementById('btnDownloadHubs').removeAttribute('disabled');
+            document.getElementById('btnDownloadEdges').removeAttribute('disabled');
+        } else {
+            BioPrism.notify(res.message || "Network analysis failed.", "error");
+            statusText.innerText = "Error: " + (res.message || '');
+        }
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-play-fill me-1"></i> Construct & Analyze PPI Network';
+    });
+});
+</script>
+{% endblock %}

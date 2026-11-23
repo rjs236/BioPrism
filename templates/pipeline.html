@@ -1,0 +1,703 @@
+{% extends "base.html" %}
+
+{% block title %}BioPrism - Interactive Analysis Pipeline{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-lg-5 py-4">
+    <!-- Header with Session Info -->
+    <div class="d-flex flex-wrap align-items-center justify-content-between mb-3">
+        <div>
+            <h3 class="fw-bold mb-0">
+                <i class="bi bi-cpu text-primary me-2"></i>Analysis Workspace
+            </h3>
+            <div class="text-muted small">
+                Session ID: <strong id="display-session-id">{{ session.session_id }}</strong> |
+                Dataset: <span id="display-dataset-name" class="badge bg-secondary">{{ session.dataset_name }}</span>
+            </div>
+        </div>
+        <div class="d-flex gap-2 mt-2 mt-md-0">
+            <button class="btn btn-sm btn-outline-secondary" onclick="resetPipeline()">
+                <i class="bi bi-arrow-counterclockwise me-1"></i> New Session
+            </button>
+            <a href="{{ url_for('api_download', file_type='template_expression') }}" class="btn btn-sm btn-outline-primary">
+                <i class="bi bi-file-earmark-arrow-down me-1"></i> Templates
+            </a>
+        </div>
+    </div>
+
+    <!-- Stepper Navigation -->
+    <div class="stepper-nav">
+        <button class="step-btn active" id="btn-step-1" onclick="switchStep(1)">
+            <span class="step-num">1</span>
+            <span>Data Input & Preprocessing</span>
+        </button>
+        <button class="step-btn" id="btn-step-2" onclick="switchStep(2)">
+            <span class="step-num">2</span>
+            <span>Differential Expression & Pathways</span>
+        </button>
+        <button class="step-btn" id="btn-step-3" onclick="switchStep(3)">
+            <span class="step-num">3</span>
+            <span>Network Analysis & Hub Genes</span>
+        </button>
+        <button class="step-btn" id="btn-step-4" onclick="switchStep(4)">
+            <span class="step-num">4</span>
+            <span>Validation & Capstone Report</span>
+        </button>
+    </div>
+
+    <!-- Global Spinner -->
+    <div id="global-spinner" class="spinner-container">
+        <div class="spinner-border text-primary" role="status"></div>
+        <div class="mt-2 fw-semibold text-primary" id="spinner-message">Processing pipeline step...</div>
+    </div>
+
+    <!-- ==================== DATA INPUT & PREPROCESSING ==================== -->
+    <div id="step-1-content">
+        <div class="row g-4">
+            <!-- Left: Upload & Demo Cards -->
+            <div class="col-lg-5">
+                <div class="bp-card">
+                    <div class="bp-card-header">
+                        <h5 class="bp-card-title"><i class="bi bi-upload text-primary"></i>Upload Gene Expression & Metadata</h5>
+                    </div>
+                    <div class="bp-card-body">
+                        <!-- 1-Click Demo Buttons -->
+                        <div class="mb-4 p-3 bg-light rounded-3 border">
+                            <label class="form-label fw-bold small text-uppercase text-muted mb-2">
+                                <i class="bi bi-lightning-charge-fill text-warning me-1"></i> Instant Capstone Review Demos
+                            </label>
+                            <div class="d-grid gap-2">
+                                <button type="button" class="btn btn-outline-primary btn-sm text-start" onclick="loadDemoDataset('microarray')">
+                                    <i class="bi bi-check2-circle text-success me-1"></i> <strong>Microarray Oncology Demo</strong> (Log2 Normalized, 20 samples)
+                                </button>
+                                <button type="button" class="btn btn-outline-info btn-sm text-start" onclick="loadDemoDataset('rnaseq')">
+                                    <i class="bi bi-check2-circle text-info me-1"></i> <strong>RNA-seq Raw Counts Demo</strong> (Integer counts, 20 samples)
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Upload Form -->
+                        <form id="upload-form" enctype="multipart/form-data">
+                            <input type="hidden" name="session_id" value="{{ session.session_id }}">
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold small">1. Gene Expression Matrix (CSV / TSV)</label>
+                                <input type="file" class="form-control form-control-sm" name="expression_file" id="expr-file-input" accept=".csv,.tsv,.txt">
+                                <div class="form-text small">Genes in first column (header <code>Gene</code>), samples across remaining columns.</div>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label fw-semibold small">2. Sample Metadata (CSV / TSV)</label>
+                                <input type="file" class="form-control form-control-sm" name="metadata_file" id="meta-file-input" accept=".csv,.tsv,.txt">
+                                <div class="form-text small">First column <code>Sample</code>, second column <code>Group</code> (Case vs Control).</div>
+                            </div>
+                            <div class="row g-2 mb-3">
+                                <div class="col-sm-6">
+                                    <label class="form-label fw-semibold small">Data Format</label>
+                                    <select class="form-select form-select-sm" name="input_type">
+                                        <option value="auto" selected>Auto-infer Format</option>
+                                        <option value="microarray_log2">Microarray (Log2 Normalized)</option>
+                                        <option value="rnaseq_counts">RNA-seq (Raw Counts)</option>
+                                        <option value="rnaseq_normalized">RNA-seq (TPM / FPKM)</option>
+                                    </select>
+                                </div>
+                                <div class="col-sm-6">
+                                    <label class="form-label fw-semibold small">Missing Values</label>
+                                    <select class="form-select form-select-sm" name="missing_strategy">
+                                        <option value="impute_median" selected>Impute Row Median</option>
+                                        <option value="drop">Drop Incomplete Genes</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <button type="submit" class="btn btn-primary btn-sm w-100">
+                                <i class="bi bi-check-circle me-1"></i> Upload & Validate Dataset
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right: Validation Summary & Table Previews -->
+            <div class="col-lg-7">
+                <div class="bp-card">
+                    <div class="bp-card-header">
+                        <h5 class="bp-card-title"><i class="bi bi-shield-check text-success"></i>Quality Control & Dataset Summary</h5>
+                    </div>
+                    <div class="bp-card-body">
+                        <!-- Placeholder before upload -->
+                        <div id="qc-placeholder" class="text-center py-5 text-muted">
+                            <i class="bi bi-cloud-arrow-up fs-1 opacity-50 mb-2"></i>
+                            <p class="mb-2">No dataset loaded yet.</p>
+                            <p class="small">Upload your CSV files or click one of the instant review demo buttons on the left.</p>
+                        </div>
+
+                        <!-- Results container -->
+                        <div id="qc-results" style="display: none;">
+                            <!-- Alert badges -->
+                            <div id="qc-alerts"></div>
+
+                            <!-- KPI grid -->
+                            <div class="row g-2 mb-4">
+                                <div class="col-6 col-sm-3">
+                                    <div class="stat-box">
+                                        <div class="stat-box-title">Genes</div>
+                                        <div class="stat-box-value" id="kpi-num-genes">-</div>
+                                    </div>
+                                </div>
+                                <div class="col-6 col-sm-3">
+                                    <div class="stat-box">
+                                        <div class="stat-box-title">Samples</div>
+                                        <div class="stat-box-value" id="kpi-num-samples">-</div>
+                                    </div>
+                                </div>
+                                <div class="col-6 col-sm-3">
+                                    <div class="stat-box">
+                                        <div class="stat-box-title">Format</div>
+                                        <div class="stat-box-value fs-5 mt-2" id="kpi-inferred-type">-</div>
+                                    </div>
+                                </div>
+                                <div class="col-6 col-sm-3">
+                                    <div class="stat-box">
+                                        <div class="stat-box-title">Range</div>
+                                        <div class="stat-box-value fs-5 mt-2" id="kpi-range">-</div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Group Distribution -->
+                            <div class="mb-3">
+                                <label class="fw-bold small text-muted text-uppercase">Cohort Distribution:</label>
+                                <span id="kpi-cohort-badges" class="ms-2"></span>
+                            </div>
+
+                            <!-- Table Preview Tabs -->
+                            <ul class="nav nav-tabs nav-fill mb-2" role="tablist">
+                                <li class="nav-item">
+                                    <button class="nav-link active small py-1" data-bs-toggle="tab" data-bs-target="#tab-preview-expr">
+                                        Expression Matrix Preview (Top 10)
+                                    </button>
+                                </li>
+                                <li class="nav-item">
+                                    <button class="nav-link small py-1" data-bs-toggle="tab" data-bs-target="#tab-preview-meta">
+                                        Metadata Preview (Top 10)
+                                    </button>
+                                </li>
+                            </ul>
+                            <div class="tab-content mb-4">
+                                <div class="tab-pane fade show active" id="tab-preview-expr">
+                                    <div class="bp-table-container">
+                                        <table class="table table-sm table-custom table-hover" id="expr-preview-table">
+                                            <thead><tr id="expr-preview-header"></tr></thead>
+                                            <tbody id="expr-preview-body"></tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                                <div class="tab-pane fade" id="tab-preview-meta">
+                                    <div class="bp-table-container">
+                                        <table class="table table-sm table-custom table-hover" id="meta-preview-table">
+                                            <thead>
+                                                <tr><th>Sample</th><th>Group</th></tr>
+                                            </thead>
+                                            <tbody id="meta-preview-body"></tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <button class="btn btn-success btn-sm float-end" onclick="switchStep(2)">
+                                Proceed to Differential Expression <i class="bi bi-arrow-right ms-1"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== DIFFERENTIAL EXPRESSION & GSEA ==================== -->
+    <div id="step-2-content" style="display: none;">
+        <div class="row g-4">
+            <!-- Left: Settings & Pathway Enrichment -->
+            <div class="col-lg-4">
+                <!-- Parameters Card -->
+                <div class="bp-card mb-4">
+                    <div class="bp-card-header">
+                        <h5 class="bp-card-title"><i class="bi bi-sliders text-danger"></i>DE Parameters</h5>
+                    </div>
+                    <div class="bp-card-body">
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold small">Case Group (Condition of Interest)</label>
+                            <select class="form-select form-select-sm" id="de-case-group"></select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold small">Control Group (Baseline / Reference)</label>
+                            <select class="form-select form-select-sm" id="de-control-group"></select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold small">Statistical Method</label>
+                            <select class="form-select form-select-sm" id="de-method-select">
+                                <option value="limma" selected>R limma (Linear Models + Empirical Bayes)</option>
+                                <option value="deseq2">R DESeq2 (Negative Binomial GLM for Counts)</option>
+                                <option value="fallback_ttest">Python Welch's t-test + BH-FDR</option>
+                            </select>
+                        </div>
+                        <div class="row g-2 mb-3">
+                            <div class="col-6">
+                                <label class="form-label fw-semibold small">FDR Threshold</label>
+                                <input type="number" class="form-control form-control-sm" id="de-fdr-input" value="0.05" step="0.01" min="0.0001" max="1">
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label fw-semibold small">|log2FC| Threshold</label>
+                                <input type="number" class="form-control form-control-sm" id="de-fc-input" value="1.0" step="0.1" min="0">
+                            </div>
+                        </div>
+                        <button class="btn btn-danger btn-sm w-100" onclick="runDifferentialExpression()">
+                            <i class="bi bi-play-fill me-1"></i> Run Differential Expression
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Pathway Enrichment Card -->
+                <div class="bp-card">
+                    <div class="bp-card-header">
+                        <h5 class="bp-card-title"><i class="bi bi-diagram-2 text-warning"></i>Pathway Enrichment (GSEApy)</h5>
+                    </div>
+                    <div class="bp-card-body">
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold small">Gene-Set Database</label>
+                            <select class="form-select form-select-sm" id="enrichment-db-select">
+                                <option value="KEGG_2021_Human" selected>KEGG 2021 Human</option>
+                                <option value="GO_Biological_Process_2023">GO Biological Process 2023</option>
+                                <option value="Reactome_2022">Reactome 2022</option>
+                                <option value="MSigDB_Hallmark_2020">MSigDB Hallmark 2020</option>
+                            </select>
+                        </div>
+                        <button class="btn btn-warning btn-sm w-100 text-dark fw-bold mb-3" onclick="runPathwayEnrichment()">
+                            <i class="bi bi-search me-1"></i> Enriched Biological Pathways
+                        </button>
+                        <!-- Pathways Table Preview -->
+                        <div class="bp-table-container" style="max-height: 250px;">
+                            <table class="table table-sm table-custom table-hover">
+                                <thead>
+                                    <tr><th>Pathway Term</th><th>FDR</th><th>Overlap</th></tr>
+                                </thead>
+                                <tbody id="pathways-table-body">
+                                    <tr><td colspan="3" class="text-muted text-center py-3">Run pathway enrichment to populate.</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right: Volcano Plot & DE Table -->
+            <div class="col-lg-8">
+                <div class="bp-card">
+                    <div class="bp-card-header">
+                        <h5 class="bp-card-title"><i class="bi bi-graph-up text-danger"></i>Interactive Volcano Plot</h5>
+                        <div id="de-engine-badge" class="badge bg-light text-dark border">No DE executed</div>
+                    </div>
+                    <div class="bp-card-body">
+                        <!-- DE Stat Badges -->
+                        <div class="row g-2 mb-3">
+                            <div class="col-sm-3 col-6">
+                                <div class="stat-box">
+                                    <div class="stat-box-title">Significant</div>
+                                    <div class="stat-box-value" id="kpi-de-sig">-</div>
+                                </div>
+                            </div>
+                            <div class="col-sm-3 col-6">
+                                <div class="stat-box">
+                                    <div class="stat-box-title">Upregulated</div>
+                                    <div class="stat-box-value text-danger" id="kpi-de-up">-</div>
+                                </div>
+                            </div>
+                            <div class="col-sm-3 col-6">
+                                <div class="stat-box">
+                                    <div class="stat-box-title">Downregulated</div>
+                                    <div class="stat-box-value text-primary" id="kpi-de-down">-</div>
+                                </div>
+                            </div>
+                            <div class="col-sm-3 col-6">
+                                <div class="stat-box">
+                                    <div class="stat-box-title">Not Sig</div>
+                                    <div class="stat-box-value text-muted" id="kpi-de-ns">-</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Volcano Plot Container -->
+                        <div id="volcano-plot-container" style="min-height: 440px;">
+                            <div class="text-center py-5 text-muted">
+                                <i class="bi bi-bar-chart fs-1 opacity-50 mb-2"></i>
+                                <p>Click "Run Differential Expression" to generate volcano plot.</p>
+                            </div>
+                        </div>
+
+                        <!-- Results Table -->
+                        <div class="mt-4">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <h6 class="fw-bold mb-0">Top Differentially Expressed Genes</h6>
+                                <a id="btn-download-de-csv" href="#" class="btn btn-sm btn-outline-danger disabled">
+                                    <i class="bi bi-download me-1"></i> Download DE Results (CSV)
+                                </a>
+                            </div>
+                            <div class="bp-table-container">
+                                <table class="table table-sm table-custom table-hover">
+                                    <thead>
+                                        <tr>
+                                            <th>Gene</th>
+                                            <th>log2FC</th>
+                                            <th>AveExpr</th>
+                                            <th>p-value</th>
+                                            <th>FDR (adj. p)</th>
+                                            <th>Regulation</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="de-genes-table-body">
+                                        <tr><td colspan="6" class="text-muted text-center py-3">No DE results available yet.</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <div class="mt-4 text-end">
+                            <button class="btn btn-info btn-sm text-white" onclick="switchStep(3)">
+                                Proceed to Network Analysis <i class="bi bi-arrow-right ms-1"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== PPI NETWORK & HUB GENES ==================== -->
+    <div id="step-3-content" style="display: none;">
+        <div class="row g-4">
+            <!-- Left: Network Parameters & Ranked Hubs Table -->
+            <div class="col-lg-5">
+                <div class="bp-card mb-4">
+                    <div class="bp-card-header">
+                        <h5 class="bp-card-title"><i class="bi bi-sliders text-info"></i>STRING Query Parameters</h5>
+                    </div>
+                    <div class="bp-card-body">
+                        <div class="row g-2 mb-3">
+                            <div class="col-sm-6">
+                                <label class="form-label fw-semibold small">Organism</label>
+                                <select class="form-select form-select-sm" id="network-species-select">
+                                    <option value="9606" selected>Homo sapiens (Human)</option>
+                                    <option value="10090">Mus musculus (Mouse)</option>
+                                    <option value="10116">Rattus norvegicus (Rat)</option>
+                                </select>
+                            </div>
+                            <div class="col-sm-6">
+                                <label class="form-label fw-semibold small">Min Confidence</label>
+                                <select class="form-select form-select-sm" id="network-confidence-select">
+                                    <option value="400" selected>Medium (Score &ge; 400)</option>
+                                    <option value="700">High (Score &ge; 700)</option>
+                                    <option value="900">Highest (Score &ge; 900)</option>
+                                </select>
+                            </div>
+                        </div>
+                        <button class="btn btn-info btn-sm text-white w-100 fw-bold" onclick="runNetworkAnalysis()">
+                            <i class="bi bi-share me-1"></i> Construct Network & Rank Hub Genes
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Hub Genes Table -->
+                <div class="bp-card">
+                    <div class="bp-card-header">
+                        <h5 class="bp-card-title"><i class="bi bi-award-fill text-warning"></i>Candidate Hub Genes (Top 10)</h5>
+                        <a id="btn-download-hubs-csv" href="#" class="btn btn-sm btn-outline-primary disabled">
+                            <i class="bi bi-download"></i> CSV
+                        </a>
+                    </div>
+                    <div class="bp-card-body">
+                        <div class="small text-muted mb-2">
+                            Ranking based on <strong>Composite Hub Score</strong> combining normalized degree, betweenness centrality, and statistical significance.
+                        </div>
+                        <div class="bp-table-container" style="max-height: 380px;">
+                            <table class="table table-sm table-custom table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>Rank</th>
+                                        <th>Gene</th>
+                                        <th>Score</th>
+                                        <th>Degree</th>
+                                        <th>Betweenness</th>
+                                        <th>log2FC</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="hub-genes-table-body">
+                                    <tr><td colspan="6" class="text-muted text-center py-3">Run network analysis to rank hub genes.</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right: Interactive Plotly Network Graph -->
+            <div class="col-lg-7">
+                <div class="bp-card">
+                    <div class="bp-card-header">
+                        <h5 class="bp-card-title"><i class="bi bi-diagram-3-fill text-primary"></i>Interaction Network Graph</h5>
+                        <div id="network-status-badge" class="badge bg-light text-dark border">Awaiting Query</div>
+                    </div>
+                    <div class="bp-card-body">
+                        <!-- Network KPIs -->
+                        <div class="row g-2 mb-3">
+                            <div class="col-3">
+                                <div class="stat-box">
+                                    <div class="stat-box-title">Nodes</div>
+                                    <div class="stat-box-value" id="kpi-net-nodes">-</div>
+                                </div>
+                            </div>
+                            <div class="col-3">
+                                <div class="stat-box">
+                                    <div class="stat-box-title">Edges</div>
+                                    <div class="stat-box-value" id="kpi-net-edges">-</div>
+                                </div>
+                            </div>
+                            <div class="col-3">
+                                <div class="stat-box">
+                                    <div class="stat-box-title">Density</div>
+                                    <div class="stat-box-value fs-5 mt-2" id="kpi-net-density">-</div>
+                                </div>
+                            </div>
+                            <div class="col-3">
+                                <div class="stat-box">
+                                    <div class="stat-box-title">Components</div>
+                                    <div class="stat-box-value fs-5 mt-2" id="kpi-net-components">-</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Plotly Network Container -->
+                        <div id="network-plot-container" style="min-height: 480px;">
+                            <div class="text-center py-5 text-muted">
+                                <i class="bi bi-bezier2 fs-1 opacity-50 mb-2"></i>
+                                <p>Construct network to visualize protein interactions.</p>
+                            </div>
+                        </div>
+
+                        <!-- Scientific disclaimer -->
+                        <div class="callout-box callout-warning mt-3">
+                            <i class="bi bi-exclamation-triangle-fill fs-5"></i>
+                            <div class="small">
+                                <strong>Scientific Requirement:</strong> STRING database associations encompass diverse functional evidence (co-expression, text mining, shared pathways) in addition to direct physical interactions. High centrality identifies candidate hub genes, not clinical biomarker validity.
+                            </div>
+                        </div>
+
+                        <div class="text-end mt-3">
+                            <button class="btn btn-success btn-sm" onclick="switchStep(4)">
+                                Proceed to Biomarker Validation <i class="bi bi-arrow-right ms-1"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== VALIDATION & REPORT ==================== -->
+    <div id="step-4-content" style="display: none;">
+        <div class="row g-4">
+            <!-- Left: Machine Learning Configuration -->
+            <div class="col-lg-4">
+                <div class="bp-card mb-4">
+                    <div class="bp-card-header">
+                        <h5 class="bp-card-title"><i class="bi bi-shield-check text-success"></i>Classification Setup</h5>
+                    </div>
+                    <div class="bp-card-body">
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold small">Candidate Hub Genes for Model</label>
+                            <input type="text" class="form-control form-control-sm" id="ml-genes-input" placeholder="e.g. TP53, EGFR, MYC, PTEN">
+                            <div class="form-text small">Pre-populated with top candidate hub genes.</div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold small">Classifier</label>
+                            <select class="form-select form-select-sm" id="ml-classifier-select">
+                                <option value="logistic_regression" selected>Logistic Regression (L2 Regularized)</option>
+                                <option value="random_forest">Random Forest Classifier</option>
+                                <option value="compare_both">Compare Both (Logistic Regression vs. Random Forest)</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold small">Cross-Validation Protocol</label>
+                            <select class="form-select form-select-sm" id="ml-cv-select">
+                                <option value="5" selected>5-Fold Stratified Cross-Validation</option>
+                                <option value="3">3-Fold Stratified Cross-Validation</option>
+                            </select>
+                            <div class="form-text small">Feature scaling is strictly encapsulated inside each CV training fold to prevent data leakage.</div>
+                        </div>
+                        <div class="form-check form-switch mb-3">
+                            <input class="form-check-input" type="checkbox" id="check-independent-val" checked>
+                            <label class="form-check-label small fw-semibold" for="check-independent-val">
+                                Test on Independent Validation Cohort (8 samples)
+                            </label>
+                        </div>
+                        <button class="btn btn-success btn-sm w-100 fw-bold" onclick="runMLValidation()">
+                            <i class="bi bi-cpu-fill me-1"></i> Run Biomarker Validation
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Export & Download Card -->
+                <div class="bp-card">
+                    <div class="bp-card-header">
+                        <h5 class="bp-card-title"><i class="bi bi-file-earmark-arrow-down text-primary"></i>Capstone Reports & Exports</h5>
+                    </div>
+                    <div class="bp-card-body">
+                        <p class="small text-muted mb-3">
+                            Generate comprehensive reports with provenance, software versions, visualizations, tables, and scientific limitations.
+                        </p>
+                        <div class="d-grid gap-2">
+                            <button class="btn btn-primary btn-sm fw-bold" onclick="generateReport()">
+                                <i class="bi bi-file-earmark-richtext me-1"></i> Generate Standalone HTML Report
+                            </button>
+                            <div class="d-flex gap-2">
+                                <a id="btn-dl-metrics-csv" href="#" class="btn btn-outline-secondary btn-sm flex-fill disabled">
+                                    <i class="bi bi-download me-1"></i> Metrics CSV
+                                </a>
+                                <a id="btn-dl-de-csv-2" href="#" class="btn btn-outline-secondary btn-sm flex-fill disabled">
+                                    <i class="bi bi-download me-1"></i> DE CSV
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right: Validation Metrics, ROC Curve & Confusion Matrix -->
+            <div class="col-lg-8">
+                <div class="bp-card">
+                    <div class="bp-card-header">
+                        <h5 class="bp-card-title"><i class="bi bi-graph-up-arrow text-success"></i>Model Performance & Discriminative Power</h5>
+                    </div>
+                    <div class="bp-card-body">
+                        <!-- ML Metrics Cards -->
+                        <div class="row g-2 mb-4">
+                            <div class="col-sm-2 col-4">
+                                <div class="stat-box">
+                                    <div class="stat-box-title">ROC-AUC</div>
+                                    <div class="stat-box-value" id="kpi-ml-auc">-</div>
+                                </div>
+                            </div>
+                            <div class="col-sm-2 col-4">
+                                <div class="stat-box">
+                                    <div class="stat-box-title">Accuracy</div>
+                                    <div class="stat-box-value" id="kpi-ml-acc">-</div>
+                                </div>
+                            </div>
+                            <div class="col-sm-2 col-4">
+                                <div class="stat-box">
+                                    <div class="stat-box-title">Precision</div>
+                                    <div class="stat-box-value" id="kpi-ml-prec">-</div>
+                                </div>
+                            </div>
+                            <div class="col-sm-3 col-6">
+                                <div class="stat-box">
+                                    <div class="stat-box-title">Recall</div>
+                                    <div class="stat-box-value" id="kpi-ml-rec">-</div>
+                                </div>
+                            </div>
+                            <div class="col-sm-3 col-6">
+                                <div class="stat-box">
+                                    <div class="stat-box-title">F1-Score</div>
+                                    <div class="stat-box-value" id="kpi-ml-f1">-</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Model Comparison Table (Shown when Compare Both is executed) -->
+                        <div id="model-comparison-container" style="display: none;" class="mb-4">
+                            <h6 class="fw-bold mb-2"><i class="bi bi-intersect text-primary me-1"></i>Classifier Comparison (Cross-Validation)</h6>
+                            <div class="bp-table-container">
+                                <table class="table table-sm table-custom table-hover">
+                                    <thead>
+                                        <tr>
+                                            <th>Model</th>
+                                            <th>ROC-AUC</th>
+                                            <th>Accuracy</th>
+                                            <th>Precision</th>
+                                            <th>Recall</th>
+                                            <th>F1-Score</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="model-comparison-table-body">
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <!-- ROC Curve & Confusion Matrix Plots Side-by-Side -->
+                        <div class="row g-3 mb-4">
+                            <div class="col-md-7">
+                                <div id="roc-plot-container" style="min-height: 380px;">
+                                    <div class="text-center py-5 text-muted">
+                                        <i class="bi bi-bezier fs-1 opacity-50 mb-2"></i>
+                                        <p>Run validation to plot ROC curve.</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-5">
+                                <div id="cm-plot-container" style="min-height: 380px;">
+                                    <div class="text-center py-5 text-muted">
+                                        <i class="bi bi-grid-3x3 fs-1 opacity-50 mb-2"></i>
+                                        <p>Run validation to plot confusion matrix.</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Gene Coefficients Table -->
+                        <h6 class="fw-bold mb-2">Biomarker Feature Contributions</h6>
+                        <div class="bp-table-container mb-4" style="max-height: 200px;">
+                            <table class="table table-sm table-custom table-hover">
+                                <thead>
+                                    <tr><th>Gene</th><th>Weight / Coefficient</th><th>Direction</th></tr>
+                                </thead>
+                                <tbody id="ml-features-table-body">
+                                    <tr><td colspan="3" class="text-muted text-center py-3">No model coefficients calculated yet.</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <!-- Independent validation results (if tested) -->
+                        <div id="indep-val-box" style="display: none;" class="callout-box callout-success mb-4">
+                            <i class="bi bi-patch-check-fill fs-5"></i>
+                            <div>
+                                <strong>Independent Cohort Evaluation:</strong>
+                                <div id="indep-val-details" class="small mt-1"></div>
+                            </div>
+                        </div>
+
+                        <!-- Important scientific disclaimer -->
+                        <div class="callout-box callout-warning">
+                            <i class="bi bi-exclamation-octagon-fill fs-5"></i>
+                            <div class="small">
+                                <strong>Important Scientific Notice:</strong> Classification performance in cross-validation demonstrates mathematical discriminative capacity within the dataset. It does <em>not</em> establish clinical validity or clinical utility. Translating candidate hub genes into clinical biomarkers mandates rigorous validation in prospective multi-center cohorts and orthogonal assays (IHC, RT-qPCR).
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="{{ url_for('static', filename='js/app.js') }}"></script>
+<script>
+    // Handle URL parameters (e.g. ?demo=microarray or ?demo=rnaseq)
+    document.addEventListener("DOMContentLoaded", function() {
+        const urlParams = new URLSearchParams(window.location.search);
+        const demo = urlParams.get('demo');
+        if (demo === 'microarray' || demo === 'rnaseq') {
+            loadDemoDataset(demo);
+        }
+    });
+</script>
+{% endblock %}

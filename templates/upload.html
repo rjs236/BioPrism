@@ -1,0 +1,216 @@
+{% extends "base.html" %}
+
+{% block title %}Data Upload - BioPrism{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-0">
+    <div class="d-flex align-items-center justify-content-between mb-3">
+        <div>
+            <h3 class="fw-bold mb-1" style="color: var(--navy-dark);">Transcriptomics Data Upload</h3>
+            <p class="text-muted small mb-0">Upload high-throughput gene expression matrices with matched sample metadata, or explore curated public cohorts.</p>
+        </div>
+        <div class="d-flex gap-2">
+            <a href="/api/download/template_expression" class="btn btn-sm btn-outline-secondary" download>
+                <i class="bi bi-file-earmark-arrow-down"></i> Expression Template
+            </a>
+            <a href="/api/download/template_metadata" class="btn btn-sm btn-outline-secondary" download>
+                <i class="bi bi-file-earmark-arrow-down"></i> Metadata Template
+            </a>
+        </div>
+    </div>
+
+    <div class="row g-4">
+        <!-- Main Upload Form -->
+        <div class="col-lg-7">
+            <div class="bio-card h-100">
+                <div class="bio-card-header">
+                    <h5 class="bio-card-title">
+                        <i class="bi bi-cloud-arrow-up-fill text-primary"></i>
+                        <span>Upload Custom Dataset</span>
+                    </h5>
+                    <span class="badge bg-light text-dark border">CSV or TSV format</span>
+                </div>
+
+                <form id="uploadForm">
+                    <input type="hidden" name="session_id" id="uploadSessionId">
+                    
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">1. Gene Expression Matrix <span class="text-danger">*</span></label>
+                        <input type="file" class="form-control" name="expression_file" id="exprFileInput" accept=".csv,.tsv,.txt" required>
+                        <div class="form-text small">
+                            Rows: Gene Symbols / Ensembl IDs. Columns: Sample IDs. Comma or tab-separated.
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">2. Sample Metadata File <span class="text-danger">*</span></label>
+                        <input type="file" class="form-control" name="metadata_file" id="metaFileInput" accept=".csv,.tsv,.txt" required>
+                        <div class="form-text small">
+                            Column 1: Sample Identifier. Column 2: Condition / Group (e.g. Tumor vs Normal).
+                        </div>
+                    </div>
+
+                    <div class="row g-3 mb-4">
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold small">Data Modality Inference</label>
+                            <select class="form-select form-select-sm" name="input_type" id="inputTypeSelect">
+                                <option value="auto" selected>Auto-Detect (Recommended)</option>
+                                <option value="microarray_log2">Microarray Log2-Transformed</option>
+                                <option value="rnaseq_counts">RNA-seq Raw Integer Counts</option>
+                                <option value="normalized_linear">Linear Normalized (Auto log2)</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold small">Missing Value Strategy</label>
+                            <select class="form-select form-select-sm" name="missing_strategy" id="missingStrategySelect">
+                                <option value="impute_median" selected>Impute Row Median</option>
+                                <option value="impute_mean">Impute Row Mean</option>
+                                <option value="drop">Drop Rows with Missing Values</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="d-flex justify-content-between align-items-center">
+                        <span id="uploadStatusText" class="small text-muted"></span>
+                        <button type="submit" class="btn btn-bio-primary" id="btnUploadSubmit">
+                            <i class="bi bi-shield-check me-1"></i> Upload & Validate Quality
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Curated Public GEO & Benchmark Datasets -->
+        <div class="col-lg-5">
+            <div class="bio-card mb-4">
+                <div class="bio-card-header">
+                    <h5 class="bio-card-title">
+                        <i class="bi bi-box-seam-fill text-teal" style="color: var(--primary-teal);"></i>
+                        <span>Instant Verified Demo Cohorts</span>
+                    </h5>
+                    <span class="badge bg-success-subtle text-success">One-Click</span>
+                </div>
+                <p class="small text-muted mb-3">Load pre-verified transcriptomics datasets to immediately test the differential expression and machine learning pipeline.</p>
+                
+                <div class="d-grid gap-2">
+                    <button class="btn btn-outline-primary text-start p-2 d-flex align-items-center justify-content-between btnLoadDemo" data-type="microarray">
+                        <div>
+                            <strong class="d-block small">Oncogenomics Microarray Cohort</strong>
+                            <span class="text-muted" style="font-size: 0.75rem;">Affymetrix Log2 Expression | 25 Genes, 10 Samples (Tumor vs Normal)</span>
+                        </div>
+                        <i class="bi bi-arrow-right-circle fs-5"></i>
+                    </button>
+                    <button class="btn btn-outline-info text-start p-2 d-flex align-items-center justify-content-between btnLoadDemo" data-type="rnaseq">
+                        <div>
+                            <strong class="d-block small">RNA-seq Transcriptome Count Matrix</strong>
+                            <span class="text-muted" style="font-size: 0.75rem;">Illumina Raw Counts | Compatible with DESeq2 Workflow</span>
+                        </div>
+                        <i class="bi bi-arrow-right-circle fs-5"></i>
+                    </button>
+                </div>
+            </div>
+
+            <div class="bio-card">
+                <div class="bio-card-header">
+                    <h5 class="bio-card-title">
+                        <i class="bi bi-globe-americas text-cyan" style="color: var(--cyan-accent);"></i>
+                        <span>Public GEO Benchmark Cohorts</span>
+                    </h5>
+                </div>
+                <p class="small text-muted mb-2">Access public Gene Expression Omnibus (GEO) series:</p>
+                <div class="mb-3">
+                    <select class="form-select form-select-sm" id="geoSelect">
+                        <option value="GSE42568">GSE42568: Human Breast Cancer (Microarray Log2)</option>
+                        <option value="GSE19804">GSE19804: Non-Small Cell Lung Carcinoma (Counts)</option>
+                        <option value="GSE3325">GSE3325: Clinical Melanoma Progression Cohort</option>
+                    </select>
+                </div>
+                <button class="btn btn-bio-outline btn-sm w-100" id="btnLoadGeo">
+                    <i class="bi bi-cloud-download me-1"></i> Load Selected GEO Cohort
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const sid = BioPrism.getSessionId();
+    document.getElementById('uploadSessionId').value = sid;
+
+    // Handle Custom Upload
+    document.getElementById('uploadForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const btn = document.getElementById('btnUploadSubmit');
+        const statusText = document.getElementById('uploadStatusText');
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Validating...';
+        statusText.innerText = "Parsing expression matrix and aligning sample metadata...";
+
+        const formData = new FormData(this);
+        formData.set('session_id', sid);
+
+        try {
+            const resp = await fetch('/api/upload', {
+                method: 'POST',
+                body: formData
+            });
+            const res = await resp.json();
+            if (res.success) {
+                BioPrism.notify("Dataset uploaded and validated successfully!", "success");
+                setTimeout(() => {
+                    window.location.href = `/preprocessing?session_id=${sid}`;
+                }, 600);
+            } else {
+                BioPrism.notify(res.errors ? res.errors.join('<br>') : (res.message || 'Validation failed'), "error");
+                statusText.innerText = "Validation failed. Please review errors.";
+            }
+        } catch (err) {
+            BioPrism.notify("Network or server error during upload.", "error");
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="bi bi-shield-check me-1"></i> Upload & Validate Quality';
+        }
+    });
+
+    // Handle Demo Loaders
+    document.querySelectorAll('.btnLoadDemo').forEach(btn => {
+        btn.addEventListener('click', async function() {
+            const demoType = this.getAttribute('data-type');
+            this.disabled = true;
+            BioPrism.notify("Loading demo cohort into session...", "info");
+            const res = await BioPrism.apiPost('/api/load-demo', { type: demoType, session_id: sid });
+            if (res.success) {
+                BioPrism.notify("Demo cohort loaded successfully!", "success");
+                setTimeout(() => {
+                    window.location.href = `/preprocessing?session_id=${sid}`;
+                }, 600);
+            } else {
+                BioPrism.notify(res.message || "Failed to load demo cohort.", "error");
+                this.disabled = false;
+            }
+        });
+    });
+
+    // Handle GEO Loader
+    document.getElementById('btnLoadGeo')?.addEventListener('click', async function() {
+        const geoId = document.getElementById('geoSelect').value;
+        this.disabled = true;
+        this.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Fetching GEO...';
+        const res = await BioPrism.apiPost('/api/load-geo', { geo_id: geoId, session_id: sid });
+        if (res.success) {
+            BioPrism.notify(`GEO cohort ${geoId} loaded into session!`, "success");
+            setTimeout(() => {
+                window.location.href = `/preprocessing?session_id=${sid}`;
+            }, 600);
+        } else {
+            BioPrism.notify(res.message || "Failed to load GEO dataset.", "error");
+            this.disabled = false;
+            this.innerHTML = '<i class="bi bi-cloud-download me-1"></i> Load Selected GEO Cohort';
+        }
+    });
+});
+</script>
+{% endblock %}

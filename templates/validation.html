@@ -1,0 +1,298 @@
+{% extends "base.html" %}
+
+{% block title %}Biomarker Validation & Classification - BioPrism{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-0">
+    <div class="d-flex align-items-center justify-content-between mb-3">
+        <div>
+            <h3 class="fw-bold mb-1" style="color: var(--navy-dark);">Biomarker Validation & Classification</h3>
+            <p class="text-muted small mb-0">Evaluate the predictive generalizability of prioritized candidate biomarkers using regularized machine learning and stratified cross-validation.</p>
+        </div>
+        <div class="d-flex gap-2">
+            <a href="/api/download/validation_metrics{% if session and session.session_id %}?session_id={{ session.session_id }}{% endif %}" class="btn btn-sm btn-outline-secondary" id="btnDownloadMetrics" {% if not session or not session.ml_metrics %}disabled{% endif %}>
+                <i class="bi bi-download me-1"></i> Validation Metrics CSV
+            </a>
+            <a href="{{ url_for('ai_assistant_page') }}" class="btn btn-sm btn-bio-primary">
+                Proceed to AI Assistant <i class="bi bi-arrow-right ms-1"></i>
+            </a>
+        </div>
+    </div>
+
+    <!-- Parameter Configuration Card -->
+    <div class="bio-card mb-4">
+        <div class="bio-card-header">
+            <h5 class="bio-card-title">
+                <i class="bi bi-cpu-fill text-success"></i>
+                <span>Classification & Validation Setup</span>
+            </h5>
+            <span class="badge bg-light text-dark border">Data Leakage Encapsulation Active</span>
+        </div>
+
+        <form id="mlForm">
+            <div class="row g-3">
+                <div class="col-md-5">
+                    <label class="form-label fw-semibold small">Candidate Biomarker Panel (Genes to Evaluate)</label>
+                    <input type="text" class="form-control form-control-sm" id="candidateGenesInput" 
+                           placeholder="e.g. TP53, MDM2, EGFR, PTEN"
+                           value="{% if session and session.hub_genes %}{% for h in session.hub_genes[:6] %}{{ h.Gene }}{% if not loop.last %}, {% endif %}{% endfor %}{% endif %}">
+                    <div class="form-text small">Auto-populated with top ranked candidate hub genes from Network Analysis.</div>
+                </div>
+
+                <div class="col-md-3">
+                    <label class="form-label fw-semibold small">Machine Learning Classifier</label>
+                    <select class="form-select form-select-sm" id="classifierSelect">
+                        <option value="logistic_regression" selected>Logistic Regression (L2 Regularized)</option>
+                        <option value="random_forest">Random Forest Classifier</option>
+                        <option value="svm">Support Vector Machine (SVM)</option>
+                        <option value="compare_all">Head-to-Head Comparison (All 3 Models)</option>
+                    </select>
+                </div>
+
+                <div class="col-md-2">
+                    <label class="form-label fw-semibold small">Cross-Validation Strategy</label>
+                    <select class="form-select form-select-sm" id="cvSplitsSelect">
+                        <option value="5" selected>5-Fold Stratified CV</option>
+                        <option value="3">3-Fold Stratified CV</option>
+                        <option value="10">10-Fold Stratified CV</option>
+                    </select>
+                </div>
+
+                <div class="col-md-2 d-flex align-items-end">
+                    <button type="submit" class="btn btn-bio-primary btn-sm w-100" id="btnRunValidation">
+                        <i class="bi bi-play-fill me-1"></i> Train & Validate
+                    </button>
+                </div>
+            </div>
+
+            <div class="form-check form-switch mt-3 pt-2 border-top">
+                <input class="form-check-input" type="checkbox" id="chkIndependentCohort" checked>
+                <label class="form-check-label small fw-semibold" for="chkIndependentCohort">
+                    Test model generalizability against Independent Validation Cohort (Secondary patient dataset)
+                </label>
+            </div>
+            <div class="mt-2 text-muted small" id="mlStatusText">
+                {% if session and session.ml_metrics %}
+                    Evaluation complete using {{ session.ml_metrics.cv_method }}.
+                {% else %}
+                    Click to run cross-validated machine learning evaluation.
+                {% endif %}
+            </div>
+        </form>
+    </div>
+
+    <!-- Performance Metric KPIs -->
+    <div class="row g-3 mb-4">
+        <div class="col-md-2">
+            <div class="kpi-card">
+                <div>
+                    <div class="kpi-value text-teal" id="kpiAuc" style="color: var(--primary-teal);">
+                        {% if session and session.ml_metrics %}{{ "%.3f"|format(session.ml_metrics.metrics.roc_auc) }}{% else %}0.000{% endif %}
+                    </div>
+                    <div class="kpi-label">ROC-AUC</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-2">
+            <div class="kpi-card kpi-cyan">
+                <div>
+                    <div class="kpi-value" id="kpiAcc">
+                        {% if session and session.ml_metrics %}{{ "%.1f%%"|format(session.ml_metrics.metrics.accuracy * 100) }}{% else %}0.0%{% endif %}
+                    </div>
+                    <div class="kpi-label">Accuracy</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-2">
+            <div class="kpi-card kpi-blue">
+                <div>
+                    <div class="kpi-value" id="kpiPrec">
+                        {% if session and session.ml_metrics %}{{ "%.1f%%"|format(session.ml_metrics.metrics.precision * 100) }}{% else %}0.0%{% endif %}
+                    </div>
+                    <div class="kpi-label">Precision</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-2">
+            <div class="kpi-card kpi-navy">
+                <div>
+                    <div class="kpi-value" id="kpiRec">
+                        {% if session and session.ml_metrics %}{{ "%.1f%%"|format(session.ml_metrics.metrics.recall * 100) }}{% else %}0.0%{% endif %}
+                    </div>
+                    <div class="kpi-label">Recall (Sensitivity)</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-2">
+            <div class="kpi-card">
+                <div>
+                    <div class="kpi-value" id="kpiF1">
+                        {% if session and session.ml_metrics %}{{ "%.3f"|format(session.ml_metrics.metrics.f1_score) }}{% else %}0.000{% endif %}
+                    </div>
+                    <div class="kpi-label">F1-Score</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-2">
+            <div class="kpi-card kpi-navy">
+                <div>
+                    <div class="kpi-value" id="kpiNumGenes" style="font-size: 1.5rem;">
+                        {% if session and session.ml_metrics %}{{ session.ml_metrics.metrics.num_candidate_genes }}{% else %}0{% endif %}
+                    </div>
+                    <div class="kpi-label">Biomarker Genes</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Interactive Plots (ROC Curve & Confusion Matrix) -->
+    <div class="row g-4 mb-4">
+        <div class="col-lg-7">
+            <div class="bio-card h-100">
+                <div class="bio-card-header">
+                    <h5 class="bio-card-title">
+                        <i class="bi bi-graph-up text-primary"></i>
+                        <span>Receiver Operating Characteristic (ROC Curve)</span>
+                    </h5>
+                    <span class="text-muted small">Cross-Validated Out-of-Fold Predictions</span>
+                </div>
+                <div id="rocPlotContainer" style="height: 400px;">
+                    <div class="text-center py-5 text-muted">Train classifier to generate ROC curve.</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-5">
+            <div class="bio-card h-100">
+                <div class="bio-card-header">
+                    <h5 class="bio-card-title">
+                        <i class="bi bi-grid-3x3-gap-fill text-teal" style="color: var(--primary-teal);"></i>
+                        <span>Out-of-Fold Confusion Matrix</span>
+                    </h5>
+                    <span class="text-muted small">Prediction Verification</span>
+                </div>
+                <div id="cmPlotContainer" style="height: 400px;">
+                    <div class="text-center py-5 text-muted">Confusion matrix will display here.</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Independent Cohort & Cross-Cohort Comparison -->
+    <div class="bio-card mb-4" id="indepCard">
+        <div class="bio-card-header">
+            <h5 class="bio-card-title">
+                <i class="bi bi-shield-check text-success"></i>
+                <span>Independent Validation Cohort Testing</span>
+            </h5>
+            <span class="badge bg-success-subtle text-success">Generalization Assessment</span>
+        </div>
+        <div id="indepStatusText" class="mb-3 text-muted small">
+            {% if session and session.ml_metrics and session.ml_metrics.independent_validation %}
+                {{ session.ml_metrics.independent_validation.message }}
+            {% else %}
+                Independent validation evaluates model generalizability without any retraining.
+            {% endif %}
+        </div>
+        <div id="exprCompPlotContainer" style="height: 350px;">
+            <div class="text-center py-4 text-muted">Cross-cohort candidate expression comparison will appear when independent testing is enabled.</div>
+        </div>
+    </div>
+
+    <!-- Scientific Safeguards Disclaimer -->
+    <div class="bio-card border-warning bg-light">
+        <div class="d-flex gap-3">
+            <i class="bi bi-shield-exclamation text-warning fs-2 flex-shrink-0"></i>
+            <div>
+                <strong class="d-block text-dark mb-1">Scientific Integrity & Methodology Notice:</strong>
+                <p class="small text-muted mb-0">
+                    To strictly prevent <em>data leakage</em> (Type III error / optimistic bias), all feature normalization (<code>StandardScaler</code>) is encapsulated strictly within cross-validation folds using <code>sklearn.pipeline.Pipeline</code>. No test fold statistics were exposed during feature scaling or model fitting. Computational biomarker discovery prioritizes candidates for subsequent prospective bench validation (RT-qPCR, immunohistochemistry).
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const sid = BioPrism.getSessionId();
+
+    {% if session and session.ml_metrics %}
+        {% if session.ml_metrics.roc_plot %}
+            BioPrism.renderPlotly('rocPlotContainer', {{ session.ml_metrics.roc_plot | tojson }});
+        {% endif %}
+        {% if session.ml_metrics.confusion_matrix_plot %}
+            BioPrism.renderPlotly('cmPlotContainer', {{ session.ml_metrics.confusion_matrix_plot | tojson }});
+        {% endif %}
+        {% if session.ml_metrics.expression_comparison_plot %}
+            BioPrism.renderPlotly('exprCompPlotContainer', {{ session.ml_metrics.expression_comparison_plot | tojson }});
+        {% endif %}
+    {% endif %}
+
+    document.getElementById('mlForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const btn = document.getElementById('btnRunValidation');
+        const statusText = document.getElementById('mlStatusText');
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Training...';
+        statusText.innerText = "Training models inside cross-validation folds with scaling encapsulation...";
+
+        const genesRaw = document.getElementById('candidateGenesInput').value;
+        const genesList = genesRaw.split(',').map(s => s.trim().toUpperCase()).filter(s => s.length > 0);
+
+        const payload = {
+            session_id: sid,
+            candidate_genes: genesList,
+            classifier: document.getElementById('classifierSelect').value,
+            cv_splits: parseInt(document.getElementById('cvSplitsSelect').value),
+            use_independent_cohort: document.getElementById('chkIndependentCohort').checked
+        };
+
+        const res = await BioPrism.apiPost('/api/run-validation', payload);
+        if (res.success) {
+            BioPrism.notify("Biomarker machine learning validation complete!", "success");
+            statusText.innerText = `Evaluated ${res.metrics.classifier} via ${res.cv_method}.`;
+
+            // Update KPIs
+            document.getElementById('kpiAuc').innerText = Number(res.metrics.roc_auc).toFixed(3);
+            document.getElementById('kpiAcc').innerText = (Number(res.metrics.accuracy) * 100).toFixed(1) + '%';
+            document.getElementById('kpiPrec').innerText = (Number(res.metrics.precision) * 100).toFixed(1) + '%';
+            document.getElementById('kpiRec').innerText = (Number(res.metrics.recall) * 100).toFixed(1) + '%';
+            document.getElementById('kpiF1').innerText = Number(res.metrics.f1_score).toFixed(3);
+            document.getElementById('kpiNumGenes').innerText = res.metrics.num_candidate_genes;
+
+            // Render Plots
+            if (res.roc_plot) {
+                BioPrism.renderPlotly('rocPlotContainer', res.roc_plot);
+            }
+            if (res.confusion_matrix_plot) {
+                BioPrism.renderPlotly('cmPlotContainer', res.confusion_matrix_plot);
+            }
+            if (res.expression_comparison_plot) {
+                BioPrism.renderPlotly('exprCompPlotContainer', res.expression_comparison_plot);
+            }
+
+            if (res.independent_validation) {
+                document.getElementById('indepStatusText').innerHTML = `
+                    <div class="alert alert-success py-2 mb-0 small">
+                        <strong>Independent Cohort (${res.independent_validation.dataset_name}):</strong>
+                        Accuracy: ${(res.independent_validation.accuracy * 100).toFixed(1)}% | 
+                        ROC-AUC: ${res.independent_validation.roc_auc.toFixed(3)} 
+                        (${res.independent_validation.message})
+                    </div>
+                `;
+            }
+
+            document.getElementById('btnDownloadMetrics').removeAttribute('disabled');
+        } else {
+            BioPrism.notify(res.message || "Classification validation failed.", "error");
+            statusText.innerText = "Error: " + (res.message || '');
+        }
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-play-fill me-1"></i> Train & Validate';
+    });
+});
+</script>
+{% endblock %}

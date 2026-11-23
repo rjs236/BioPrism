@@ -1,0 +1,205 @@
+{% extends "base.html" %}
+
+{% block title %}AI Assistant - BioPrism{% endblock %}
+
+{% block extra_head %}
+<!-- Marked.js for rendering markdown in chatbot replies -->
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-0">
+    <div class="d-flex align-items-center justify-content-between mb-3">
+        <div>
+            <h3 class="fw-bold mb-1" style="color: var(--navy-dark);">BioPrism AI Scientific Assistant</h3>
+            <p class="text-muted small mb-0">Ask natural language questions about your active dataset, differential expression results, hub genes, and machine learning models.</p>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+            <span class="badge bg-light text-dark border px-3 py-2 d-flex align-items-center gap-2">
+                <i class="bi bi-cpu-fill text-teal" style="color: var(--primary-teal);"></i>
+                <span id="aiEngineBadge">Grounded Scientific AI</span>
+            </span>
+            <button class="btn btn-sm btn-outline-danger" id="btnClearChat" title="Clear chat conversation">
+                <i class="bi bi-trash"></i> Clear Chat
+            </button>
+        </div>
+    </div>
+
+    <!-- Active Session Grounded Context Banner -->
+    <div class="bio-card mb-3 py-2 px-3 bg-light">
+        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
+            <div class="d-flex align-items-center gap-2 small">
+                <span class="badge bg-teal text-white" style="background-color: var(--primary-teal);">Active Context Grounding</span>
+                <span><strong>Dataset:</strong> <span id="ctxDataset">{% if session and session.dataset_name %}{{ session.dataset_name }}{% else %}No Dataset Loaded{% endif %}</span></span>
+                <span class="text-muted">|</span>
+                <span><strong>DEGs:</strong> <span id="ctxDEGs">{% if session and session.de_summary %}{{ session.de_summary.significant_total }} ({{ session.de_summary.case_group }} vs {{ session.de_summary.control_group }}){% else %}0{% endif %}</span></span>
+                <span class="text-muted">|</span>
+                <span><strong>Hubs:</strong> <span id="ctxHubs">{% if session and session.hub_genes %}{% for h in session.hub_genes[:4] %}{{ h.Gene }}{% if not loop.last %}, {% endif %}{% endfor %}{% else %}None{% endif %}</span></span>
+                <span class="text-muted">|</span>
+                <span><strong>Model AUC:</strong> <span id="ctxAuc">{% if session and session.ml_metrics %}{{ "%.3f"|format(session.ml_metrics.metrics.roc_auc) }}{% else %}-{% endif %}</span></span>
+            </div>
+            <small class="text-muted"><i class="bi bi-shield-check text-success"></i> Zero Hallucination Mode</small>
+        </div>
+    </div>
+
+    <!-- Preset Prompt Question Pills -->
+    <div class="mb-3 d-flex flex-wrap gap-2 align-items-center">
+        <span class="small fw-semibold text-muted me-1">Recommended Prompts:</span>
+        <button class="prompt-pill" data-prompt="Summarize the key scientific findings of this dataset and analysis.">
+            📋 Summarize Key Findings
+        </button>
+        <button class="prompt-pill" data-prompt="Explain why the top hub genes were prioritized as candidate biomarkers.">
+            🧬 Explain Top Hub Genes
+        </button>
+        <button class="prompt-pill" data-prompt="Explain the log2 fold change and adjusted p-value (FDR) thresholds used in this analysis.">
+            📊 Explain log₂FC & FDR
+        </button>
+        <button class="prompt-pill" data-prompt="Summarize the top enriched biological pathways and their cellular implications.">
+            🔬 Interpret Enriched Pathways
+        </button>
+        <button class="prompt-pill" data-prompt="Evaluate the machine learning classification results and explain how data leakage was prevented.">
+            🎯 Evaluate Classifier & Leakage
+        </button>
+        <button class="prompt-pill" data-prompt="Draft a formal scientific abstract summarizing this analysis for a research report.">
+            📝 Draft Report Abstract
+        </button>
+    </div>
+
+    <!-- Chat Interface Container -->
+    <div class="chat-container">
+        <!-- Message History Thread -->
+        <div class="chat-messages" id="chatMessages">
+            <!-- Initial Welcome Greeting -->
+            <div class="chat-bubble chat-bubble-ai">
+                <div class="d-flex align-items-center gap-2 mb-1">
+                    <img src="{{ url_for('static', filename='images/logo.svg') }}" style="width: 20px; height: 20px;">
+                    <strong style="color: var(--primary-teal);">BioPrism Assistant</strong>
+                    <span class="badge bg-light text-muted border ms-auto" style="font-size: 0.7rem;">Verified Context</span>
+                </div>
+                <div>
+                    Hello! I am your <strong>BioPrism Scientific Assistant</strong>. I am strictly grounded in the real mathematical and topological results of your active transcriptomics analysis.
+                    <br><br>
+                    You can ask me to:
+                    <ul class="mb-2 mt-1 ps-3">
+                        <li>Explain why specific genes (e.g. <code>TP53</code>, <code>EGFR</code>) were flagged as candidate biomarkers.</li>
+                        <li>Interpret log₂ fold changes, Benjamini-Hochberg FDR adjustments, or volcano plot distributions.</li>
+                        <li>Summarize the biological significance of enriched pathways (KEGG / GO / Reactome).</li>
+                        <li>Explain network centralities (degree, betweenness) and hub rankings.</li>
+                        <li>Evaluate classifier reliability (ROC-AUC, confusion matrix, and data leakage safeguards).</li>
+                    </ul>
+                    Click any preset question above or type your inquiry below!
+                </div>
+            </div>
+        </div>
+
+        <!-- Chat Input Form -->
+        <div class="chat-input-area">
+            <form id="chatForm" class="d-flex gap-2">
+                <input type="text" class="form-control" id="chatInput" placeholder="Ask a question about your gene expression, pathway, network, or validation results..." autocomplete="off" required>
+                <button type="submit" class="btn btn-bio-primary d-flex align-items-center gap-1 px-4" id="btnSendChat">
+                    <span>Send</span>
+                    <i class="bi bi-send-fill"></i>
+                </button>
+            </form>
+            <div class="d-flex justify-content-between align-items-center mt-2 px-1">
+                <small class="text-muted" style="font-size: 0.75rem;">
+                    ⚠️ BioPrism AI answers are strictly derived from your computational analysis. Findings represent hypothesis-generating candidates requiring orthogonal wet-lab assays.
+                </small>
+                <small class="text-muted" id="aiLatencyLabel" style="font-size: 0.75rem;"></small>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const sid = BioPrism.getSessionId();
+    const chatMessages = document.getElementById('chatMessages');
+    const chatInput = document.getElementById('chatInput');
+    const btnSend = document.getElementById('btnSendChat');
+    const latencyLabel = document.getElementById('aiLatencyLabel');
+
+    function appendMessage(role, text, engine) {
+        const bubble = document.createElement('div');
+        bubble.className = `chat-bubble chat-bubble-${role === 'user' ? 'user' : 'ai'}`;
+        
+        if (role === 'ai') {
+            const header = document.createElement('div');
+            header.className = 'd-flex align-items-center gap-2 mb-1';
+            header.innerHTML = `
+                <img src="/static/images/logo.svg" style="width: 18px; height: 18px;">
+                <strong style="color: var(--primary-teal);">BioPrism Assistant</strong>
+                <span class="badge bg-light text-muted border ms-auto" style="font-size: 0.7rem;">${engine || 'Verified Grounding'}</span>
+            `;
+            bubble.appendChild(header);
+
+            const contentDiv = document.createElement('div');
+            contentDiv.innerHTML = marked.parse(text);
+            bubble.appendChild(contentDiv);
+        } else {
+            bubble.innerText = text;
+        }
+
+        chatMessages.appendChild(bubble);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+
+    async function handleSendMessage(query) {
+        if (!query || !query.trim()) return;
+        const msg = query.trim();
+        appendMessage('user', msg);
+        chatInput.value = '';
+        chatInput.focus();
+
+        btnSend.disabled = true;
+        btnSend.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+        latencyLabel.innerText = "Analyzing grounded session context...";
+
+        const startTime = Date.now();
+        const res = await BioPrism.apiPost('/api/ai/chat', {
+            session_id: sid,
+            message: msg
+        });
+
+        const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
+        latencyLabel.innerText = `Response generated in ${elapsed}s`;
+
+        if (res.success) {
+            appendMessage('ai', res.response, res.engine);
+            if (res.engine) {
+                document.getElementById('aiEngineBadge').innerText = res.engine;
+            }
+        } else {
+            appendMessage('ai', "I encountered an issue processing your request: " + (res.message || 'Unknown error'));
+        }
+
+        btnSend.disabled = false;
+        btnSend.innerHTML = '<span>Send</span> <i class="bi bi-send-fill"></i>';
+    }
+
+    // Submit form
+    document.getElementById('chatForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        handleSendMessage(chatInput.value);
+    });
+
+    // Preset prompts
+    document.querySelectorAll('.prompt-pill').forEach(pill => {
+        pill.addEventListener('click', function() {
+            const promptText = this.getAttribute('data-prompt');
+            handleSendMessage(promptText);
+        });
+    });
+
+    // Clear chat
+    document.getElementById('btnClearChat')?.addEventListener('click', function() {
+        if (confirm("Clear active chat conversation history?")) {
+            chatMessages.innerHTML = '';
+            appendMessage('ai', "Chat history cleared. How can I help you interpret your transcriptomic results?");
+        }
+    });
+});
+</script>
+{% endblock %}

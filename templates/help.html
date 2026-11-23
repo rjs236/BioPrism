@@ -1,0 +1,239 @@
+{% extends "base.html" %}
+
+{% block title %}BioPrism - Methodology & Capstone Defense Guide{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-lg-5 py-5">
+    <!-- Header -->
+    <div class="mb-5 text-center">
+        <span class="badge bg-primary bg-opacity-10 text-primary fw-bold px-3 py-2 rounded-pill mb-2">Scientific Documentation</span>
+        <h2 class="fw-bold">BioPrism: Methodology & Capstone Defense Guide</h2>
+        <p class="text-muted mx-auto" style="max-width: 750px;">
+            A comprehensive reference on the statistical mechanics, graph algorithms, and machine learning principles underpinning BioPrism, structured to assist students during oral defense and technical evaluations.
+        </p>
+    </div>
+
+    <div class="row g-4">
+        <!-- Sidebar Navigation -->
+        <div class="col-lg-3">
+            <div class="bp-card p-3 sticky-top" style="top: 20px;">
+                <h6 class="fw-bold text-uppercase text-muted small mb-3">Topic Navigation</h6>
+                <div class="nav flex-column nav-pills small">
+                    <a class="nav-link text-dark py-2" href="#sec-overview"><i class="bi bi-compass me-2"></i>Pipeline Philosophy</a>
+                    <a class="nav-link text-dark py-2" href="#sec-limma"><i class="bi bi-calculator me-2"></i>Limma vs DESeq2</a>
+                    <a class="nav-link text-dark py-2" href="#sec-fdr"><i class="bi bi-funnel me-2"></i>FDR & Multiplicity</a>
+                    <a class="nav-link text-dark py-2" href="#sec-string"><i class="bi bi-share me-2"></i>STRING PPI Architecture</a>
+                    <a class="nav-link text-dark py-2" href="#sec-centrality"><i class="bi bi-diagram-3 me-2"></i>Network Centralities</a>
+                    <a class="nav-link text-dark py-2" href="#sec-ml"><i class="bi bi-shield-check me-2"></i>ML Leakage Prevention</a>
+                    <a class="nav-link text-dark py-2" href="#sec-clinical"><i class="bi bi-exclamation-triangle me-2"></i>Clinical Validity Limits</a>
+                    <a class="nav-link text-dark py-2" href="#sec-faq"><i class="bi bi-question-circle me-2"></i>Oral Defense Q&A</a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="col-lg-9">
+            <!-- Section 1: Overview -->
+            <div id="sec-overview" class="bp-card p-4 mb-4">
+                <h4 class="fw-bold text-primary mb-3">1. Pipeline Philosophy & Rationale</h4>
+                <p>
+                    Modern high-throughput genomics generates expression levels across tens of thousands of genes simultaneously, yet typical biomedical cohorts suffer from the <em>"curse of dimensionality"</em> ($p \gg n$, where the number of features $p \approx 20,000$ vastly exceeds the number of biological replicates $n \approx 10 - 100$).
+                </p>
+                <p>
+                    <strong>BioPrism</strong> addresses this challenge through a multi-tiered filtering cascade:
+                </p>
+                <ol class="text-secondary ps-3">
+                    <li><strong>Rigorous Preprocessing:</strong> Verification of sample identifier parity, median imputation, and automatic format identification.</li>
+                    <li><strong>Empirical Bayes Linear Modeling:</strong> Statistically borrowing variance information across all genes using R <code>limma</code> (or negative binomial modeling with <code>DESeq2</code> for raw counts).</li>
+                    <li><strong>Biological Contextualization:</strong> Connecting significant genes via STRING database functional associations and identifying topologically indispensable hub nodes.</li>
+                    <li><strong>Leakage-Free Validation:</strong> Nested cross-validation with feature scaling strictly isolated within training folds to evaluate true generalization capacity.</li>
+                </ol>
+            </div>
+
+            <!-- Section 2: Limma vs DESeq2 -->
+            <div id="sec-limma" class="bp-card p-4 mb-4">
+                <h4 class="fw-bold text-primary mb-3">2. Differential Expression: Limma vs. DESeq2</h4>
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <div class="p-3 bg-light rounded-3 border h-100">
+                            <h6 class="fw-bold text-dark"><i class="bi bi-cpu text-primary me-2"></i>R limma (Microarray & Normalized Log2)</h6>
+                            <p class="small text-muted mb-2">
+                                In standard Student's t-tests, gene-wise sample variances $s_g^2$ calculated on small sample sizes ($n=3-10$) are unstable, resulting in elevated false positives for genes with artificially small variances.
+                            </p>
+                            <p class="small text-muted mb-0">
+                                <strong>Limma's Empirical Bayes:</strong> Shrinks sample variances towards a common global prior $s_0^2$:
+                                $$\tilde{s}_g^2 = \frac{d_0 s_0^2 + d_g s_g^2}{d_0 + d_g}$$
+                                This moderated t-statistic produces robust p-values that withstand small-sample fluctuations.
+                            </p>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="p-3 bg-light rounded-3 border h-100">
+                            <h6 class="fw-bold text-dark"><i class="bi bi-bezier2 text-info me-2"></i>R DESeq2 (Raw RNA-seq Counts)</h6>
+                            <p class="small text-muted mb-2">
+                                RNA-seq counts are discrete integers that exhibit <em>overdispersion</em> (variance exceeds the mean), violating normal distribution assumptions.
+                            </p>
+                            <p class="small text-muted mb-0">
+                                <strong>Negative Binomial Modeling:</strong> DESeq2 models counts with:
+                                $$K_{gj} \sim \text{NB}(\text{mean} = \mu_{gj}, \text{dispersion} = \alpha_g)$$
+                                and uses median-of-ratios size factor normalization to adjust for differing library depths.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Section 3: FDR -->
+            <div id="sec-fdr" class="bp-card p-4 mb-4">
+                <h4 class="fw-bold text-primary mb-3">3. False Discovery Rate (Benjamini-Hochberg)</h4>
+                <p>
+                    When testing 20,000 genes at an unadjusted significance level $\alpha = 0.05$, one expects $20,000 \times 0.05 = 1,000$ false positives purely by chance.
+                </p>
+                <p>
+                    BioPrism implements the <strong>Benjamini-Hochberg (BH)</strong> step-up procedure to control the False Discovery Rate (FDR):
+                </p>
+                <div class="p-3 bg-light rounded-3 border font-monospace small mb-3">
+                    1. Sort raw p-values: P(1) &le; P(2) &le; ... &le; P(m)<br>
+                    2. Calculate critical value: (i / m) &times; Q<br>
+                    3. Find largest rank k such that P(k) &le; (k / m) &times; Q<br>
+                    4. Declare all genes with rank i &le; k as statistically significant.
+                </div>
+            </div>
+
+            <!-- Section 4: STRING PPI -->
+            <div id="sec-string" class="bp-card p-4 mb-4">
+                <h4 class="fw-bold text-primary mb-3">4. STRING Database Functional Association Scores</h4>
+                <p>
+                    The STRING database integrates evidence from multiple distinct channels:
+                </p>
+                <ul class="text-secondary small ps-3">
+                    <li><strong>Genomic Context:</strong> Gene neighborhood, gene fusion, and phylogenetic co-occurrence.</li>
+                    <li><strong>High-Throughput Experiments:</strong> Affinity purification, yeast two-hybrid, mass spectrometry.</li>
+                    <li><strong>Conserved Co-Expression:</strong> Correlated transcript patterns across heterogeneous conditions.</li>
+                    <li><strong>Automated Text Mining:</strong> Joint mentions of protein pairs in PubMed abstracts.</li>
+                </ul>
+                <div class="callout-box callout-info">
+                    <i class="bi bi-info-circle-fill fs-5"></i>
+                    <div class="small">
+                        <strong>Confidence Thresholds:</strong> A STRING combined score $S \ge 400$ indicates medium confidence (roughly 50% probability that interaction is biologically genuine); $S \ge 700$ reflects high confidence, and $S \ge 900$ reflects highest confidence.
+                    </div>
+                </div>
+            </div>
+
+            <!-- Section 5: Centrality -->
+            <div id="sec-centrality" class="bp-card p-4 mb-4">
+                <h4 class="fw-bold text-primary mb-3">5. Network Topologies & Composite Hub Ranking</h4>
+                <p>
+                    NetworkX is utilized to construct a graph $G = (V, E)$ where nodes $V$ represent proteins and edges $E$ represent interactions weighted by confidence score.
+                </p>
+                <div class="row g-3 mb-3">
+                    <div class="col-md-6">
+                        <div class="p-3 bg-light rounded-3 border">
+                            <h6 class="fw-bold">Degree Centrality ($C_D$)</h6>
+                            <p class="small text-muted mb-0">
+                                Measures direct connectivity: $C_D(v) = \frac{\text{deg}(v)}{|V| - 1}$. High degree nodes serve as master biological coordinators.
+                            </p>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="p-3 bg-light rounded-3 border">
+                            <h6 class="fw-bold">Betweenness Centrality ($C_B$)</h6>
+                            <p class="small text-muted mb-0">
+                                Measures bottleneck influence: $C_B(v) = \sum_{s \ne v \ne t} \frac{\sigma_{st}(v)}{\sigma_{st}}$. Proteins with high betweenness bridge disparate cellular functional modules.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+                <div class="p-3 bg-light rounded-3 border">
+                    <h6 class="fw-bold">BioPrism Composite Hub Score Formula</h6>
+                    <p class="small text-muted mb-0">
+                        To prioritize genes that are both topologically influential AND statistically dysregulated, BioPrism integrates:
+                        $$\text{Hub Score} = 0.45 \times \frac{\text{Degree}}{\text{Max Degree}} + 0.35 \times C_B(v) + 0.20 \times \min\left(1.0, \frac{|\log_2 \text{FC}| \cdot (-\log_{10} \text{FDR})}{10}\right)$$
+                    </p>
+                </div>
+            </div>
+
+            <!-- Section 6: ML Leakage Prevention -->
+            <div id="sec-ml" class="bp-card p-4 mb-4">
+                <h4 class="fw-bold text-primary mb-3">6. Machine Learning Data Leakage Prevention</h4>
+                <p>
+                    A catastrophic flaw in naive bioinformatics machine learning pipelines is <strong>data leakage</strong>: scaling features or normalizing the entire dataset <em>before</em> splitting into train and test folds. This leaks information about the mean and variance of the test set into the model, leading to spuriously inflated accuracy.
+                </p>
+                <div class="p-3 bg-light rounded-3 border mb-3">
+                    <h6 class="fw-bold text-success"><i class="bi bi-shield-check me-1"></i>BioPrism's Leakage-Free Architecture</h6>
+                    <p class="small text-muted mb-0">
+                        BioPrism strictly utilizes <code>sklearn.pipeline.Pipeline</code> inside stratified cross-validation folds:
+                    </p>
+                    <pre class="small text-dark bg-white p-2 border rounded mt-2 mb-0"><code>pipeline = Pipeline([
+    ('scaler', StandardScaler()),       # Scaler fits ONLY on X_train fold
+    ('classifier', LogisticRegression(class_weight='balanced'))
+])
+# Test fold X_test is transformed using parameters from X_train!</code></pre>
+                </div>
+            </div>
+
+            <!-- Section 7: Clinical Validity Limits -->
+            <div id="sec-clinical" class="bp-card p-4 mb-4">
+                <h4 class="fw-bold text-primary mb-3">7. Clinical Validity Boundaries</h4>
+                <div class="callout-box callout-warning">
+                    <i class="bi bi-exclamation-triangle-fill fs-5"></i>
+                    <div>
+                        <strong>Key Scientific Takeaway for Capstone Reviewers:</strong>
+                        <div class="small mt-1">
+                            High classification accuracy (e.g. ROC-AUC &gt; 0.90) in a discovery cohort demonstrates statistical discriminative power within that dataset. It does <strong>not</strong> establish clinical diagnostic utility. True translation requires:
+                            <ul class="mb-0 mt-1 ps-3">
+                                <li><strong>Analytical Validity:</strong> Assay repeatability and precision across laboratories.</li>
+                                <li><strong>Clinical Validity:</strong> Blinded prospective testing in multi-center clinical trials.</li>
+                                <li><strong>Orthogonal Biological Assays:</strong> Molecular verification via RT-qPCR, Western blot, or Immunohistochemistry (IHC).</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Section 8: FAQ for Oral Defense -->
+            <div id="sec-faq" class="bp-card p-4">
+                <h4 class="fw-bold text-primary mb-3">8. Capstone Oral Defense Q&A</h4>
+                <div class="accordion" id="accordionFaq">
+                    <div class="accordion-item">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button collapsed fw-bold small" type="button" data-bs-toggle="collapse" data-bs-target="#faq1">
+                                Q1: Why did you use limma instead of standard Student's t-test?
+                            </button>
+                        </h2>
+                        <div id="faq1" class="accordion-collapse collapse" data-bs-parent="#accordionFaq">
+                            <div class="accordion-body small text-muted">
+                                Standard t-tests perform poorly when sample size is small because variance estimation per gene is erratic. Limma's Empirical Bayes methodology estimates prior variance parameters across all genes simultaneously, effectively moderating extreme variance outliers and providing substantially higher statistical power.
+                            </div>
+                        </div>
+                    </div>
+                    <div class="accordion-item">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button collapsed fw-bold small" type="button" data-bs-toggle="collapse" data-bs-target="#faq2">
+                                Q2: How does BioPrism handle non-integer RNA-seq data?
+                            </button>
+                        </h2>
+                        <div id="faq2" class="accordion-collapse collapse" data-bs-parent="#accordionFaq">
+                            <div class="accordion-body small text-muted">
+                                If continuous normalized data (e.g. TPM / FPKM) is uploaded with large non-log values (range &gt; 30), BioPrism automatically applies $\log_2(x + 1)$ transformation to stabilize variance for linear modeling. If integer counts are uploaded, DESeq2 negative binomial modeling is recommended and executed.
+                            </div>
+                        </div>
+                    </div>
+                    <div class="accordion-item">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button collapsed fw-bold small" type="button" data-bs-toggle="collapse" data-bs-target="#faq3">
+                                Q3: What is the difference between direct physical interaction and functional association in STRING?
+                            </button>
+                        </h2>
+                        <div id="faq3" class="accordion-collapse collapse" data-bs-parent="#accordionFaq">
+                            <div class="accordion-body small text-muted">
+                                A direct physical interaction means two proteins bind to form a complex (e.g. demonstrated by X-ray crystallography or co-immunoprecipitation). A functional association includes proteins operating in the same biological cascade, sharing transcription factors, or showing co-expression, even if they do not physically touch.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,174 @@
+{% extends "base.html" %}
+
+{% block title %}Pathway Enrichment - BioPrism{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-0">
+    <div class="d-flex align-items-center justify-content-between mb-3">
+        <div>
+            <h3 class="fw-bold mb-1" style="color: var(--navy-dark);">Biological Pathway Enrichment</h3>
+            <p class="text-muted small mb-0">Discover biological processes and signaling cascades enriched among your differentially expressed genes using GSEApy.</p>
+        </div>
+        <div class="d-flex gap-2">
+            <a href="{{ url_for('differential_expression_page') }}" class="btn btn-sm btn-outline-secondary">
+                <i class="bi bi-arrow-left"></i> Differential Expression
+            </a>
+            <a href="{{ url_for('network_analysis_page') }}" class="btn btn-sm btn-bio-primary">
+                Proceed to Network Analysis <i class="bi bi-arrow-right ms-1"></i>
+            </a>
+        </div>
+    </div>
+
+    <!-- Parameter Configuration Card -->
+    <div class="bio-card mb-4">
+        <div class="bio-card-header">
+            <h5 class="bio-card-title">
+                <i class="bi bi-diagram-3-fill text-teal" style="color: var(--primary-teal);"></i>
+                <span>Enrichment Parameters & Gene Set Selection</span>
+            </h5>
+            <span class="badge bg-light text-dark border">GSEApy Enrichr</span>
+        </div>
+
+        <form id="enrichmentForm">
+            <div class="row g-3 align-items-end">
+                <div class="col-md-5">
+                    <label class="form-label fw-semibold small">Biological Gene Set Library</label>
+                    <select class="form-select form-select-sm" id="geneSetSelect">
+                        <option value="KEGG_2021_Human" selected>KEGG 2021 Human (Metabolic & Disease Pathways)</option>
+                        <option value="GO_Biological_Process_2023">Gene Ontology (GO Biological Process 2023)</option>
+                        <option value="Reactome_2022">Reactome 2022 (Signaling Reactions & Events)</option>
+                        <option value="MSigDB_Hallmark_2020">MSigDB Hallmark 2020 (Canonical Cancer Hallmarks)</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label fw-semibold small">Significance Cutoff (FDR)</label>
+                    <input type="number" class="form-control form-control-sm" id="enrichCutoffInput" value="0.05" step="0.01" min="0.001" max="0.5">
+                </div>
+                <div class="col-md-4">
+                    <button type="submit" class="btn btn-bio-primary btn-sm w-100" id="btnRunEnrichment">
+                        <i class="bi bi-play-fill me-1"></i> Compute Pathway Enrichment
+                    </button>
+                </div>
+            </div>
+            <div class="mt-2 text-muted small" id="enrichmentStatusText">
+                {% if session and session.pathway_results %}
+                    Enrichment results loaded for {{ session.pathway_results|length }} biological pathway(s).
+                {% else %}
+                    Click compute to query biological gene sets against your active significant gene list.
+                {% endif %}
+            </div>
+        </form>
+    </div>
+
+    <!-- Interactive Pathway Enrichment Bar Chart -->
+    <div class="bio-card mb-4">
+        <div class="bio-card-header">
+            <h5 class="bio-card-title">
+                <i class="bi bi-bar-chart-fill text-teal" style="color: var(--primary-teal);"></i>
+                <span>Enriched Signaling Pathways (-log₁₀ FDR)</span>
+            </h5>
+            <span class="text-muted small">Horizontal Rank Order</span>
+        </div>
+        <div id="pathwayPlotContainer" style="height: 420px;">
+            <div class="text-center py-5 text-muted">Run pathway enrichment to display interactive chart.</div>
+        </div>
+    </div>
+
+    <!-- Enriched Pathways Table -->
+    <div class="bio-card">
+        <div class="bio-card-header">
+            <h5 class="bio-card-title">
+                <i class="bi bi-table text-primary"></i>
+                <span>Enriched Pathway Details & Overlapping Transcripts</span>
+            </h5>
+            <span class="badge bg-light text-dark border">Ranked by Adjusted p-value</span>
+        </div>
+        <div class="table-responsive">
+            <table class="bio-table" id="pathwaysTable">
+                <thead>
+                    <tr>
+                        <th>Biological Pathway / Gene Set</th>
+                        <th>Adjusted p-val (FDR)</th>
+                        <th>Odds Ratio</th>
+                        <th>Gene Overlap</th>
+                        <th>Overlapping Candidate Genes</th>
+                    </tr>
+                </thead>
+                <tbody id="pathwayTableBody">
+                    {% if session and session.pathway_results %}
+                        {% for p in session.pathway_results %}
+                        <tr>
+                            <td><strong>{{ p.term }}</strong></td>
+                            <td>{{ "%.2e"|format(p.adj_p_val) }}</td>
+                            <td>{{ p.odds_ratio }}</td>
+                            <td><span class="badge bg-secondary">{{ p.overlap if p.overlap else '-' }}</span></td>
+                            <td><small class="text-muted">{{ p.genes }}</small></td>
+                        </tr>
+                        {% endfor %}
+                    {% else %}
+                        <tr>
+                            <td colspan="5" class="text-center py-4 text-muted">No enriched pathways calculated yet. Click "Compute Pathway Enrichment" above.</td>
+                        </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const sid = BioPrism.getSessionId();
+
+    {% if session and session.pathway_bar_plot %}
+        BioPrism.renderPlotly('pathwayPlotContainer', {{ session.pathway_bar_plot | tojson }});
+    {% endif %}
+
+    document.getElementById('enrichmentForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const btn = document.getElementById('btnRunEnrichment');
+        const statusText = document.getElementById('enrichmentStatusText');
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Computing...';
+        statusText.innerText = "Querying GSEApy biological pathways...";
+
+        const payload = {
+            session_id: sid,
+            gene_set: document.getElementById('geneSetSelect').value,
+            cutoff: parseFloat(document.getElementById('enrichCutoffInput').value)
+        };
+
+        const res = await BioPrism.apiPost('/api/run-enrichment', payload);
+        if (res.success) {
+            BioPrism.notify("Pathway enrichment analysis complete!", "success");
+            statusText.innerText = res.message + ` (Source: ${res.source || 'Enrichr'})`;
+
+            if (res.bar_plot) {
+                BioPrism.renderPlotly('pathwayPlotContainer', res.bar_plot);
+            }
+
+            const tbody = document.getElementById('pathwayTableBody');
+            tbody.innerHTML = '';
+            (res.results || []).forEach(p => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td><strong>${p.term}</strong></td>
+                    <td>${Number(p.adj_p_val).toExponential(2)}</td>
+                    <td>${p.odds_ratio}</td>
+                    <td><span class="badge bg-secondary">${p.overlap || '-'}</span></td>
+                    <td><small class="text-muted">${p.genes}</small></td>
+                `;
+                tbody.appendChild(tr);
+            });
+        } else {
+            BioPrism.notify(res.message || "Pathway enrichment failed.", "error");
+            statusText.innerText = "Error: " + (res.message || '');
+        }
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-play-fill me-1"></i> Compute Pathway Enrichment';
+    });
+});
+</script>
+{% endblock %}

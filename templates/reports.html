@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+
+{% block title %}Reports & Exports - BioPrism{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-0">
+    <div class="d-flex align-items-center justify-content-between mb-3">
+        <div>
+            <h3 class="fw-bold mb-1" style="color: var(--navy-dark);">Reports & Data Exports</h3>
+            <p class="text-muted small mb-0">Generate comprehensive, publication-ready analysis reports and export all raw computed data matrices.</p>
+        </div>
+        <div class="d-flex gap-2">
+            <button class="btn btn-sm btn-outline-secondary" id="btnPrintReport">
+                <i class="bi bi-printer-fill me-1"></i> Print / Save as PDF
+            </button>
+            <a href="/api/download/html_report{% if session and session.session_id %}?session_id={{ session.session_id }}{% endif %}" class="btn btn-sm btn-bio-primary" id="btnDownloadHtmlReport">
+                <i class="bi bi-file-earmark-arrow-down-fill me-1"></i> Download Standalone Report (HTML)
+            </a>
+        </div>
+    </div>
+
+    <!-- Export Hub Cards -->
+    <div class="row g-4 mb-4">
+        <div class="col-lg-4">
+            <div class="bio-card h-100">
+                <div class="bio-card-header">
+                    <h5 class="bio-card-title">
+                        <i class="bi bi-file-earmark-spreadsheet-fill text-teal" style="color: var(--primary-teal);"></i>
+                        <span>Download Analysis Results</span>
+                    </h5>
+                    <span class="badge bg-light text-dark border">CSV Formats</span>
+                </div>
+                <p class="small text-muted mb-3">Export individual data tables and computed matrices for downstream bioinformatic or statistical processing:</p>
+                <div class="d-grid gap-2">
+                    <a href="/api/download/de_results{% if session and session.session_id %}?session_id={{ session.session_id }}{% endif %}" class="btn btn-sm btn-outline-primary text-start d-flex justify-content-between align-items-center">
+                        <span><i class="bi bi-file-text me-2"></i> Differential Expression Results</span>
+                        <i class="bi bi-download"></i>
+                    </a>
+                    <a href="/api/download/hub_genes{% if session and session.session_id %}?session_id={{ session.session_id }}{% endif %}" class="btn btn-sm btn-outline-primary text-start d-flex justify-content-between align-items-center">
+                        <span><i class="bi bi-award me-2"></i> Ranked Hub Genes & Centralities</span>
+                        <i class="bi bi-download"></i>
+                    </a>
+                    <a href="/api/download/network_edges{% if session and session.session_id %}?session_id={{ session.session_id }}{% endif %}" class="btn btn-sm btn-outline-primary text-start d-flex justify-content-between align-items-center">
+                        <span><i class="bi bi-share me-2"></i> STRING Interactome Edge List</span>
+                        <i class="bi bi-download"></i>
+                    </a>
+                    <a href="/api/download/validation_metrics{% if session and session.session_id %}?session_id={{ session.session_id }}{% endif %}" class="btn btn-sm btn-outline-primary text-start d-flex justify-content-between align-items-center">
+                        <span><i class="bi bi-cpu me-2"></i> ML Classifier Cross-Validation Metrics</span>
+                        <i class="bi bi-download"></i>
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-8">
+            <div class="bio-card h-100">
+                <div class="bio-card-header">
+                    <h5 class="bio-card-title">
+                        <i class="bi bi-journal-check text-primary"></i>
+                        <span>Formal 9-Section Report Structure</span>
+                    </h5>
+                    <span class="badge bg-success-subtle text-success">Standardized Capstone Framework</span>
+                </div>
+                <div class="row g-3 small">
+                    <div class="col-md-6">
+                        <ol class="ps-3 mb-0">
+                            <li class="mb-2"><strong>Dataset Information:</strong> Cohort metadata, sample IDs, experimental contrasts.</li>
+                            <li class="mb-2"><strong>Preprocessing Details:</strong> Normalization status, missing value handling, zero variance filters.</li>
+                            <li class="mb-2"><strong>Differential Expression:</strong> Statistical engine (Limma/DESeq2), volcano plot, FDR cutoffs.</li>
+                            <li class="mb-2"><strong>Pathway Enrichment:</strong> Enriched biological mechanisms (GSEApy Enrichr).</li>
+                            <li class="mb-2"><strong>Network Analysis:</strong> STRING PPI topology, graph density, connectivity.</li>
+                        </ol>
+                    </div>
+                    <div class="col-md-6">
+                        <ol start="6" class="ps-3 mb-0">
+                            <li class="mb-2"><strong>Biomarker Prioritization:</strong> Composite Hub Score combining topology and statistics.</li>
+                            <li class="mb-2"><strong>Classification Metrics:</strong> Out-of-fold ROC-AUC, accuracy, precision, recall, F1-score.</li>
+                            <li class="mb-2"><strong>AI-Assisted Interpretation:</strong> Grounded synthesis of biological and computational findings.</li>
+                            <li class="mb-2"><strong>Limitations & Parameters:</strong> Strict data leakage safeguards, reproducibility notes.</li>
+                        </ol>
+                    </div>
+                </div>
+                <div class="mt-3 pt-3 border-top d-flex justify-content-between align-items-center">
+                    <small class="text-muted">Includes complete execution provenance, date/time timestamps, and software versions.</small>
+                    <button class="btn btn-sm btn-bio-primary" id="btnRefreshReportPreview">
+                        <i class="bi bi-arrow-repeat me-1"></i> Refresh Live Preview
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Live Report Preview Frame -->
+    <div class="bio-card">
+        <div class="bio-card-header">
+            <h5 class="bio-card-title">
+                <i class="bi bi-eye-fill text-teal" style="color: var(--primary-teal);"></i>
+                <span>Interactive Live Report Preview</span>
+            </h5>
+            <span class="badge bg-light text-dark border">Printable HTML</span>
+        </div>
+        <div style="height: 700px; border: 1px solid var(--border-subtle); border-radius: 8px; overflow: hidden;">
+            <iframe id="reportFrame" src="/api/download/html_report{% if session and session.session_id %}?session_id={{ session.session_id }}{% endif %}" style="width: 100%; height: 100%; border: none;"></iframe>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const sid = BioPrism.getSessionId();
+
+    document.getElementById('btnPrintReport')?.addEventListener('click', function() {
+        const frame = document.getElementById('reportFrame');
+        if (frame && frame.contentWindow) {
+            frame.contentWindow.print();
+        } else {
+            window.open(`/api/download/html_report?session_id=${sid}`, '_blank');
+        }
+    });
+
+    document.getElementById('btnRefreshReportPreview')?.addEventListener('click', function() {
+        const frame = document.getElementById('reportFrame');
+        if (frame) {
+            frame.src = `/api/download/html_report?session_id=${sid}&t=` + Date.now();
+            BioPrism.notify("Report preview refreshed with latest session outputs.", "info");
+        }
+    });
+});
+</script>
+{% endblock %}

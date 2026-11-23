@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+
+{% block title %}Analysis History - BioPrism{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-0">
+    <div class="d-flex align-items-center justify-content-between mb-3">
+        <div>
+            <h3 class="fw-bold mb-1" style="color: var(--navy-dark);">Analysis Provenance & History</h3>
+            <p class="text-muted small mb-0">Browse and inspect previous transcriptomics analysis runs stored in your local SQLite database.</p>
+        </div>
+        <div class="d-flex gap-2">
+            <input type="text" class="form-control form-control-sm" id="historySearchInput" placeholder="Search by dataset or gene..." style="width: 250px;">
+        </div>
+    </div>
+
+    <!-- History Table -->
+    <div class="bio-card">
+        <div class="bio-card-header">
+            <h5 class="bio-card-title">
+                <i class="bi bi-clock-history text-secondary"></i>
+                <span>Stored Analysis Runs (SQLite Provenance)</span>
+            </h5>
+            <span class="badge bg-light text-dark border">{{ analyses|length if analyses else 0 }} Recorded Run(s)</span>
+        </div>
+        <div class="table-responsive">
+            <table class="bio-table" id="historyTable">
+                <thead>
+                    <tr>
+                        <th>Run ID</th>
+                        <th>Timestamp</th>
+                        <th>Dataset</th>
+                        <th>Modality</th>
+                        <th>Samples</th>
+                        <th>Contrast</th>
+                        <th>Significant DEGs</th>
+                        <th>Top Hub Genes</th>
+                        <th>Model</th>
+                        <th>ROC-AUC</th>
+                        <th>Accuracy</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="historyTableBody">
+                    {% if analyses and analyses|length > 0 %}
+                        {% for a in analyses %}
+                        <tr>
+                            <td><span class="badge bg-light text-dark border">#{{ a.id }}</span></td>
+                            <td><small class="text-muted">{{ a.timestamp }}</small></td>
+                            <td><strong>{{ a.dataset_name }}</strong></td>
+                            <td><span class="badge bg-secondary">{{ a.input_type }}</span></td>
+                            <td><small>{{ a.total_samples }}</small></td>
+                            <td><small>{{ a.case_group }} vs {{ a.control_group }}</small></td>
+                            <td><span class="badge badge-upreg">{{ a.sig_genes_count }} DEGs</span></td>
+                            <td><small class="text-teal fw-semibold" style="color: var(--primary-teal);">{{ a.top_hub_genes if a.top_hub_genes else '-' }}</small></td>
+                            <td><small>{{ a.classifier_type if a.classifier_type else '-' }}</small></td>
+                            <td>
+                                {% if a.roc_auc %}
+                                <span class="badge bg-success-subtle text-success border border-success-subtle">{{ "%.3f"|format(a.roc_auc) }}</span>
+                                {% else %}
+                                <span class="text-muted">-</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if a.accuracy %}
+                                <small>{{ "%.1f%%"|format(a.accuracy * 100) }}</small>
+                                {% else %}
+                                <span class="text-muted">-</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <div class="btn-group btn-group-sm">
+                                    <a href="{{ url_for('pipeline') }}?session_id={{ a.id }}" class="btn btn-bio-outline py-0 px-2" title="Load into Session">
+                                        <i class="bi bi-arrow-repeat"></i> Load
+                                    </a>
+                                    <a href="/api/download/html_report?session_id={{ a.id }}" class="btn btn-outline-secondary py-0 px-2" title="View Report" target="_blank">
+                                        <i class="bi bi-file-earmark-text"></i>
+                                    </a>
+                                    <button class="btn btn-outline-danger py-0 px-2 btnDeleteRun" data-id="{{ a.id }}" title="Delete">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    {% else %}
+                        <tr>
+                            <td colspan="12" class="text-center py-5 text-muted">
+                                <i class="bi bi-inbox fs-2 d-block mb-2"></i>
+                                No previous analyses recorded in SQLite. Execute a complete pipeline run to preserve provenance.
+                            </td>
+                        </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Delete action
+    document.querySelectorAll('.btnDeleteRun').forEach(btn => {
+        btn.addEventListener('click', async function() {
+            const runId = this.getAttribute('data-id');
+            if (confirm(`Delete analysis record #${runId}?`)) {
+                const res = await BioPrism.apiPost('/api/history/delete', { id: runId });
+                if (res.success) {
+                    BioPrism.notify("Record deleted.", "info");
+                    this.closest('tr').remove();
+                } else {
+                    BioPrism.notify("Failed to delete record.", "error");
+                }
+            }
+        });
+    });
+
+    // Search filter
+    document.getElementById('historySearchInput')?.addEventListener('keyup', function() {
+        const query = this.value.toUpperCase();
+        const rows = document.querySelectorAll('#historyTableBody tr');
+        rows.forEach(r => {
+            const text = r.textContent || r.innerText;
+            r.style.display = text.toUpperCase().indexOf(query) > -1 ? '' : 'none';
+        });
+    });
+});
+</script>
+{% endblock %}

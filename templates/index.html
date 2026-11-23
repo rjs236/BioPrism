@@ -1,0 +1,216 @@
+{% extends "base.html" %}
+
+{% block title %}BioPrism - Overview & Biomarker Discovery Pipeline{% endblock %}
+
+{% block content %}
+<!-- Hero Section -->
+<section class="hero-section">
+    <div class="container-fluid px-lg-5">
+        <div class="row align-items-center">
+            <div class="col-lg-8">
+                <div class="d-inline-flex align-items-center gap-2 px-3 py-1 rounded-pill bg-white bg-opacity-10 text-white small mb-3 border border-white border-opacity-25">
+                    <i class="bi bi-award-fill text-warning"></i>
+                    <span>Bioinformatics Capstone Project</span>
+                </div>
+                <h1 class="hero-title">
+                    BioPrism: Integrated Differential Expression & Network Pipeline
+                </h1>
+                <p class="hero-subtitle">
+                    A scientifically rigorous, end-to-end computational biology web application combining R <code>limma</code> / <code>DESeq2</code> statistical modeling, GSEApy pathway enrichment, STRING database PPI networks, and leakage-free scikit-learn biomarker validation.
+                </p>
+                <div class="d-flex flex-wrap gap-3 mt-4">
+                    <a href="{{ url_for('pipeline') }}" class="btn btn-lg btn-primary">
+                        <i class="bi bi-play-circle-fill me-2"></i> Launch Pipeline
+                    </a>
+                    <a href="{{ url_for('pipeline') }}?demo=microarray" class="btn btn-lg btn-outline-light">
+                        <i class="bi bi-lightning-charge-fill text-warning me-2"></i> Run Microarray Demo
+                    </a>
+                    <a href="{{ url_for('pipeline') }}?demo=rnaseq" class="btn btn-lg btn-outline-light">
+                        <i class="bi bi-bezier2 text-info me-2"></i> Run RNA-seq Demo
+                    </a>
+                </div>
+            </div>
+            <div class="col-lg-4 text-center mt-4 mt-lg-0">
+                <div class="p-4 rounded-4 bg-white bg-opacity-10 border border-white border-opacity-20 shadow-lg text-start">
+                    <div class="d-flex align-items-center justify-content-between mb-3">
+                        <span class="text-uppercase small fw-bold text-info">System Architecture</span>
+                        <span class="badge bg-success">Ready</span>
+                    </div>
+                    <div class="small text-white-50 mb-2"><i class="bi bi-check2-circle text-success me-2"></i>Backend: <strong>Flask + Python 3.13</strong></div>
+                    <div class="small text-white-50 mb-2"><i class="bi bi-check2-circle text-success me-2"></i>Statistics: <strong>R 4.4.2 & limma</strong></div>
+                    <div class="small text-white-50 mb-2"><i class="bi bi-check2-circle text-success me-2"></i>Counts Engine: <strong>DESeq2 Ready</strong></div>
+                    <div class="small text-white-50 mb-2"><i class="bi bi-check2-circle text-success me-2"></i>PPI Interactivity: <strong>STRING DB REST API</strong></div>
+                    <div class="small text-white-50 mb-2"><i class="bi bi-check2-circle text-success me-2"></i>Graph Algorithms: <strong>NetworkX</strong></div>
+                    <div class="small text-white-50"><i class="bi bi-check2-circle text-success me-2"></i>Validation: <strong>scikit-learn (Stratified CV)</strong></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Pipeline Modules Overview -->
+<section class="py-5">
+    <div class="container-fluid px-lg-5">
+        <div class="text-center mb-5">
+            <span class="text-primary text-uppercase fw-bold small">System Flowchart</span>
+            <h2 class="fw-bold mt-1">Integrated Bioinformatics Pipeline</h2>
+            <p class="text-muted mx-auto" style="max-width: 650px;">
+                Designed specifically to provide a transparent, reproducible, and verifiable journey from high-throughput omics data to candidate biomarkers.
+            </p>
+        </div>
+
+        <div class="row g-4">
+            <!-- Phase: Data QC & Preprocessing -->
+            <div class="col-md-6 col-xl-3">
+                <div class="bp-card h-100 p-4">
+                    <div class="d-flex align-items-center justify-content-between mb-3">
+                        <span class="step-num bg-primary text-white">1</span>
+                        <i class="bi bi-file-earmark-spreadsheet fs-3 text-primary"></i>
+                    </div>
+                    <h5 class="fw-bold">Data QC & Preprocessing</h5>
+                    <p class="text-muted small">
+                        Upload or load gene expression matrices and sample metadata. Verifies column alignment, sample ID parity, handles missing data, detects duplicate genes, and infers log2 vs raw count formats.
+                    </p>
+                    <ul class="small text-secondary ps-3 mb-0">
+                        <li>Strict metadata parity validation</li>
+                        <li>Median/drop missing values</li>
+                        <li>1-Click Microarray & RNA-seq Demos</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Phase: Differential Expression & GSEA -->
+            <div class="col-md-6 col-xl-3">
+                <div class="bp-card h-100 p-4">
+                    <div class="d-flex align-items-center justify-content-between mb-3">
+                        <span class="step-num bg-primary text-white">2</span>
+                        <i class="bi bi-graph-up-arrow fs-3 text-danger"></i>
+                    </div>
+                    <h5 class="fw-bold">Differential Expression & GSEA</h5>
+                    <p class="text-muted small">
+                        Executes linear models and Empirical Bayes moderation via R <code>limma</code> (or <code>DESeq2</code> for RNA-seq counts). Computes log2FC and Benjamini-Hochberg FDR, with an interactive Plotly Volcano plot and GSEApy pathway enrichment.
+                    </p>
+                    <ul class="small text-secondary ps-3 mb-0">
+                        <li>Native Rscript invocation</li>
+                        <li>Configurable FDR & log2FC cutoffs</li>
+                        <li>KEGG, GO, & Reactome enrichment</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Phase: PPI Network & Hub Genes -->
+            <div class="col-md-6 col-xl-3">
+                <div class="bp-card h-100 p-4">
+                    <div class="d-flex align-items-center justify-content-between mb-3">
+                        <span class="step-num bg-primary text-white">3</span>
+                        <i class="bi bi-diagram-3 fs-3 text-info"></i>
+                    </div>
+                    <h5 class="fw-bold">PPI Network & Hub Genes</h5>
+                    <p class="text-muted small">
+                        Queries the STRING DB API for functional protein associations, constructs an interaction graph via NetworkX, calculates Degree & Betweenness centralities, and ranks candidate hub genes using a composite scoring model.
+                    </p>
+                    <ul class="small text-secondary ps-3 mb-0">
+                        <li>Customizable confidence threshold</li>
+                        <li>Force-directed 2D interactive graph</li>
+                        <li>Ranked hub genes table & CSV export</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Phase: Validation & HTML Report -->
+            <div class="col-md-6 col-xl-3">
+                <div class="bp-card h-100 p-4">
+                    <div class="d-flex align-items-center justify-content-between mb-3">
+                        <span class="step-num bg-primary text-white">4</span>
+                        <i class="bi bi-shield-check fs-3 text-success"></i>
+                    </div>
+                    <h5 class="fw-bold">Validation & HTML Report</h5>
+                    <p class="text-muted small">
+                        Evaluates candidate biomarkers using regularized Logistic Regression with Stratified Cross-Validation. Strictly encapsulates feature scaling in CV folds to prevent data leakage. Generates standalone HTML Capstone reports.
+                    </p>
+                    <ul class="small text-secondary ps-3 mb-0">
+                        <li>Strict leakage prevention pipeline</li>
+                        <li>ROC-AUC, Confusion Matrix, F1-score</li>
+                        <li>Standalone HTML & CSV exports</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Template Downloads & Recent Runs -->
+<section class="py-5 bg-white border-top">
+    <div class="container-fluid px-lg-5">
+        <div class="row g-4">
+            <!-- Left: Templates & Resources -->
+            <div class="col-lg-6">
+                <div class="bp-card p-4 h-100">
+                    <h5 class="fw-bold mb-3"><i class="bi bi-download text-primary me-2"></i>Downloadable Sample Templates</h5>
+                    <p class="text-muted small">
+                        Ensure your custom data matches the exact format required by BioPrism. Download our standardized CSV templates below:
+                    </p>
+                    <div class="d-flex flex-wrap gap-2 mb-4">
+                        <a href="{{ url_for('api_download', file_type='template_expression') }}" class="btn btn-outline-primary btn-sm">
+                            <i class="bi bi-file-earmark-arrow-down me-1"></i> Expression Matrix Template (CSV)
+                        </a>
+                        <a href="{{ url_for('api_download', file_type='template_metadata') }}" class="btn btn-outline-primary btn-sm">
+                            <i class="bi bi-file-earmark-arrow-down me-1"></i> Sample Metadata Template (CSV)
+                        </a>
+                    </div>
+                    <div class="callout-box callout-info mb-0">
+                        <i class="bi bi-info-circle-fill fs-5"></i>
+                        <div>
+                            <strong>Expected Data Format:</strong>
+                            <div class="small mt-1">
+                                <strong>Expression Matrix:</strong> Genes as rows (first column named <code>Gene</code>), sample names as headers.<br>
+                                <strong>Metadata:</strong> First column <code>Sample</code>, second column <code>Group</code> (e.g. Tumor vs Normal, Disease vs Control).
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right: Recent Analyses -->
+            <div class="col-lg-6">
+                <div class="bp-card p-4 h-100">
+                    <h5 class="fw-bold mb-3"><i class="bi bi-clock-history text-primary me-2"></i>Recent Pipeline Runs (SQLite)</h5>
+                    {% if history %}
+                    <div class="table-responsive">
+                        <table class="table table-sm table-custom">
+                            <thead>
+                                <tr>
+                                    <th>Timestamp</th>
+                                    <th>Dataset</th>
+                                    <th>Genes</th>
+                                    <th>DEGs</th>
+                                    <th>Top Hubs</th>
+                                    <th>ROC-AUC</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for h in history %}
+                                <tr>
+                                    <td><small>{{ h.timestamp }}</small></td>
+                                    <td><strong>{{ h.dataset }}</strong></td>
+                                    <td>{{ h.genes }}</td>
+                                    <td><span class="badge bg-danger">{{ h.sig_genes }}</span></td>
+                                    <td><small>{{ h.hub_genes or 'N/A' }}</small></td>
+                                    <td><span class="badge bg-primary">{{ h.roc_auc }}</span></td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="text-center py-4 text-muted">
+                        <i class="bi bi-journal-x fs-1 opacity-50 mb-2"></i>
+                        <p class="small mb-0">No previous analysis runs stored in SQLite yet. Launch the pipeline to execute your first benchmark!</p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}

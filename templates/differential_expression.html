@@ -1,0 +1,337 @@
+{% extends "base.html" %}
+
+{% block title %}Differential Expression - BioPrism{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-0">
+    <div class="d-flex align-items-center justify-content-between mb-3">
+        <div>
+            <h3 class="fw-bold mb-1" style="color: var(--navy-dark);">Differential Expression Analysis</h3>
+            <p class="text-muted small mb-0">Identify statistically significant transcriptomic alterations using Limma (Microarray/Log2) or DESeq2 (RNA-seq Counts).</p>
+        </div>
+        <div class="d-flex gap-2">
+            <a href="/api/download/de_results{% if session and session.session_id %}?session_id={{ session.session_id }}{% endif %}" class="btn btn-sm btn-outline-secondary" id="btnDownloadDE" {% if not session or not session.de_summary %}disabled{% endif %}>
+                <i class="bi bi-download me-1"></i> Download DEGs CSV
+            </a>
+            <a href="{{ url_for('pathway_enrichment_page') }}" class="btn btn-sm btn-bio-primary">
+                Proceed to Pathway Enrichment <i class="bi bi-arrow-right ms-1"></i>
+            </a>
+        </div>
+    </div>
+
+    <!-- Parameter Configuration Card -->
+    <div class="bio-card mb-4">
+        <div class="bio-card-header">
+            <h5 class="bio-card-title">
+                <i class="bi bi-sliders text-teal" style="color: var(--primary-teal);"></i>
+                <span>Statistical Modeling Parameters</span>
+            </h5>
+            <span class="badge bg-light text-dark border">Two-Group Comparison</span>
+        </div>
+
+        <form id="deForm">
+            <div class="row g-3 align-items-end">
+                <div class="col-md-3">
+                    <label class="form-label fw-semibold small">Case Condition (Disease/Tumor)</label>
+                    <select class="form-select form-select-sm" id="caseGroupSelect" required>
+                        {% if session and session.preproc_info and session.preproc_info.available_groups %}
+                            {% for grp in session.preproc_info.available_groups %}
+                            <option value="{{ grp }}" {% if loop.first %}selected{% endif %}>{{ grp }} (n={{ session.preproc_info.group_counts[grp] }})</option>
+                            {% endfor %}
+                        {% else %}
+                            <option value="Tumor" selected>Tumor (Case)</option>
+                        {% endif %}
+                    </select>
+                </div>
+
+                <div class="col-md-3">
+                    <label class="form-label fw-semibold small">Control Condition (Normal/Baseline)</label>
+                    <select class="form-select form-select-sm" id="controlGroupSelect" required>
+                        {% if session and session.preproc_info and session.preproc_info.available_groups %}
+                            {% for grp in session.preproc_info.available_groups %}
+                            <option value="{{ grp }}" {% if loop.index == 2 %}selected{% endif %}>{{ grp }} (n={{ session.preproc_info.group_counts[grp] }})</option>
+                            {% endfor %}
+                        {% else %}
+                            <option value="Normal" selected>Normal (Control)</option>
+                        {% endif %}
+                    </select>
+                </div>
+
+                <div class="col-md-2">
+                    <label class="form-label fw-semibold small">Statistical Method</label>
+                    <select class="form-select form-select-sm" id="deMethodSelect">
+                        <option value="limma" selected>Limma (Empirical Bayes)</option>
+                        <option value="deseq2">DESeq2 (Negative Binomial)</option>
+                        <option value="python_ttest">Python Welch's t-test + BH</option>
+                    </select>
+                </div>
+
+                <div class="col-md-2">
+                    <label class="form-label fw-semibold small">FDR Cutoff (q-value)</label>
+                    <input type="number" class="form-control form-control-sm" id="fdrThresholdInput" value="0.05" step="0.01" min="0.001" max="0.5">
+                </div>
+
+                <div class="col-md-2">
+                    <label class="form-label fw-semibold small">|log₂FC| Threshold</label>
+                    <input type="number" class="form-control form-control-sm" id="log2fcThresholdInput" value="1.0" step="0.25" min="0.1" max="10.0">
+                </div>
+            </div>
+
+            <div class="d-flex justify-content-between align-items-center mt-3 pt-2 border-top">
+                <span class="text-muted small" id="deStatusText">
+                    {% if session and session.de_summary %}
+                        Last executed: {{ session.de_summary.engine }}
+                    {% else %}
+                        Select groups and click Run to calculate differential expression.
+                    {% endif %}
+                </span>
+                <button type="submit" class="btn btn-bio-primary btn-sm" id="btnRunDE">
+                    <i class="bi bi-play-fill me-1"></i> Compute Differential Expression
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <!-- Summary KPI Cards -->
+    <div class="row g-3 mb-4">
+        <div class="col-md-3">
+            <div class="kpi-card">
+                <div class="kpi-icon-box">
+                    <i class="bi bi-bullseye"></i>
+                </div>
+                <div>
+                    <div class="kpi-value" id="kpiSigTotal">{% if session and session.de_summary %}{{ session.de_summary.significant_total }}{% else %}0{% endif %}</div>
+                    <div class="kpi-label">Significant DEGs</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="kpi-card kpi-cyan">
+                <div class="kpi-icon-box">
+                    <i class="bi bi-arrow-up-circle-fill"></i>
+                </div>
+                <div>
+                    <div class="kpi-value text-teal" id="kpiUpreg" style="color: var(--primary-teal);">{% if session and session.de_summary %}{{ session.de_summary.upregulated }}{% else %}0{% endif %}</div>
+                    <div class="kpi-label">Upregulated Genes</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="kpi-card kpi-blue">
+                <div class="kpi-icon-box">
+                    <i class="bi bi-arrow-down-circle-fill"></i>
+                </div>
+                <div>
+                    <div class="kpi-value text-primary" id="kpiDownreg">{% if session and session.de_summary %}{{ session.de_summary.downregulated }}{% else %}0{% endif %}</div>
+                    <div class="kpi-label">Downregulated Genes</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="kpi-card kpi-navy">
+                <div class="kpi-icon-box" style="background-color: #f1f5f9; color: var(--navy-dark);">
+                    <i class="bi bi-dash-circle"></i>
+                </div>
+                <div>
+                    <div class="kpi-value" id="kpiNotSig">{% if session and session.de_summary %}{{ session.de_summary.not_significant }}{% else %}0{% endif %}</div>
+                    <div class="kpi-label">Not Significant</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Interactive Plotly Visualizations (Tabs: Volcano Plot, Heatmap, PCA) -->
+    <div class="bio-card mb-4">
+        <div class="bio-card-header">
+            <ul class="nav nav-tabs card-header-tabs border-0" id="dePlotsTab" role="tablist">
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link active fw-semibold text-dark" id="volcano-tab" data-bs-toggle="tab" data-bs-target="#tabVolcano" type="button" role="tab">
+                        <i class="bi bi-volcano text-danger me-1"></i> Volcano Plot
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link fw-semibold text-dark" id="heatmap-tab" data-bs-toggle="tab" data-bs-target="#tabHeatmap" type="button" role="tab">
+                        <i class="bi bi-grid-3x3 text-primary me-1"></i> Expression Heatmap
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link fw-semibold text-dark" id="pca-tab" data-bs-toggle="tab" data-bs-target="#tabPca" type="button" role="tab">
+                        <i class="bi bi-scatter-chart text-teal me-1" style="color: var(--primary-teal);"></i> PCA Sample Separation
+                    </button>
+                </li>
+            </ul>
+        </div>
+        <div class="tab-content" id="dePlotsTabContent">
+            <div class="tab-pane fade show active" id="tabVolcano" role="tabpanel">
+                <div id="volcanoPlotContainer" style="height: 480px;">
+                    <div class="text-center py-5 text-muted">Run differential expression to display interactive volcano plot.</div>
+                </div>
+            </div>
+            <div class="tab-pane fade" id="tabHeatmap" role="tabpanel">
+                <div id="heatmapPlotContainer" style="height: 480px;">
+                    <div class="text-center py-5 text-muted">Heatmap will render upon analysis completion.</div>
+                </div>
+            </div>
+            <div class="tab-pane fade" id="tabPca" role="tabpanel">
+                <div id="pcaPlotContainer" style="height: 480px;">
+                    <div class="text-center py-5 text-muted">PCA separation will render upon analysis completion.</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Differentially Expressed Genes Table -->
+    <div class="bio-card">
+        <div class="bio-card-header">
+            <h5 class="bio-card-title">
+                <i class="bi bi-table text-teal" style="color: var(--primary-teal);"></i>
+                <span>Top Ranked Differentially Expressed Transcripts</span>
+            </h5>
+            <div class="d-flex align-items-center gap-2">
+                <input type="text" class="form-control form-control-sm" id="deSearchInput" placeholder="Filter gene symbol..." style="width: 200px;">
+            </div>
+        </div>
+        <div class="table-responsive">
+            <table class="bio-table" id="deGenesTable">
+                <thead>
+                    <tr>
+                        <th>Gene Symbol</th>
+                        <th>log₂ Fold Change</th>
+                        <th>Average Expression</th>
+                        <th>p-value</th>
+                        <th>Adjusted p-val (FDR)</th>
+                        <th>Regulation</th>
+                    </tr>
+                </thead>
+                <tbody id="deTableBody">
+                    {% if session and session.de_summary and session.de_summary.top_de_genes %}
+                        {% for g in session.de_summary.top_de_genes %}
+                        <tr>
+                            <td><strong>{{ g.Gene }}</strong></td>
+                            <td>{{ "%.3f"|format(g.log2FoldChange) }}</td>
+                            <td>{{ "%.2f"|format(g.AveExpr) if g.AveExpr else '-' }}</td>
+                            <td>{{ "%.2e"|format(g.p_value) }}</td>
+                            <td>{{ "%.2e"|format(g.adj_p_val) }}</td>
+                            <td>
+                                {% if g.Regulation == 'Upregulated' %}
+                                <span class="badge badge-upreg">Upregulated</span>
+                                {% elif g.Regulation == 'Downregulated' %}
+                                <span class="badge badge-downreg">Downregulated</span>
+                                {% else %}
+                                <span class="badge badge-ns">Not Sig</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    {% else %}
+                        <tr>
+                            <td colspan="6" class="text-center text-muted py-4">No differential expression data available yet. Click "Compute Differential Expression" above.</td>
+                        </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const sid = BioPrism.getSessionId();
+
+    // Render stored plots if present
+    {% if session and session.de_summary %}
+        {% if session.volcano_plot %}
+            BioPrism.renderPlotly('volcanoPlotContainer', {{ session.volcano_plot | tojson }});
+        {% endif %}
+        {% if session.de_summary.heatmap_plot %}
+            BioPrism.renderPlotly('heatmapPlotContainer', {{ session.de_summary.heatmap_plot | tojson }});
+        {% endif %}
+        {% if session.de_summary.pca_plot %}
+            BioPrism.renderPlotly('pcaPlotContainer', {{ session.de_summary.pca_plot | tojson }});
+        {% endif %}
+    {% endif %}
+
+    // Run Differential Expression
+    document.getElementById('deForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const btn = document.getElementById('btnRunDE');
+        const statusText = document.getElementById('deStatusText');
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Executing...';
+        statusText.innerText = "Running differential expression model...";
+
+        const payload = {
+            session_id: sid,
+            case_group: document.getElementById('caseGroupSelect').value,
+            control_group: document.getElementById('controlGroupSelect').value,
+            method: document.getElementById('deMethodSelect').value,
+            fdr_threshold: parseFloat(document.getElementById('fdrThresholdInput').value),
+            log2fc_threshold: parseFloat(document.getElementById('log2fcThresholdInput').value)
+        };
+
+        const res = await BioPrism.apiPost('/api/run-de', payload);
+        if (res.success) {
+            BioPrism.notify("Differential expression analysis completed!", "success");
+            statusText.innerText = `Finished using ${res.summary.engine}. Found ${res.summary.significant_total} significant genes.`;
+            
+            // Update KPIs
+            document.getElementById('kpiSigTotal').innerText = res.summary.significant_total;
+            document.getElementById('kpiUpreg').innerText = res.summary.upregulated;
+            document.getElementById('kpiDownreg').innerText = res.summary.downregulated;
+            document.getElementById('kpiNotSig').innerText = res.summary.not_significant;
+
+            // Render Plots
+            if (res.volcano_plot) {
+                BioPrism.renderPlotly('volcanoPlotContainer', res.volcano_plot);
+            }
+            if (res.summary.heatmap_plot) {
+                BioPrism.renderPlotly('heatmapPlotContainer', res.summary.heatmap_plot);
+            }
+            if (res.summary.pca_plot) {
+                BioPrism.renderPlotly('pcaPlotContainer', res.summary.pca_plot);
+            }
+
+            // Update Table Body
+            const tbody = document.getElementById('deTableBody');
+            tbody.innerHTML = '';
+            (res.top_genes || []).forEach(g => {
+                const tr = document.createElement('tr');
+                const badge = g.Regulation === 'Upregulated' ? '<span class="badge badge-upreg">Upregulated</span>' :
+                              (g.Regulation === 'Downregulated' ? '<span class="badge badge-downreg">Downregulated</span>' : '<span class="badge badge-ns">Not Sig</span>');
+                tr.innerHTML = `
+                    <td><strong>${g.Gene}</strong></td>
+                    <td>${Number(g.log2FoldChange).toFixed(3)}</td>
+                    <td>${g.AveExpr ? Number(g.AveExpr).toFixed(2) : '-'}</td>
+                    <td>${Number(g.p_value).toExponential(2)}</td>
+                    <td>${Number(g.adj_p_val).toExponential(2)}</td>
+                    <td>${badge}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+
+            document.getElementById('btnDownloadDE').removeAttribute('disabled');
+        } else {
+            BioPrism.notify(res.message || "Differential expression failed.", "error");
+            statusText.innerText = "Execution failed: " + (res.message || '');
+        }
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-play-fill me-1"></i> Compute Differential Expression';
+    });
+
+    // Simple table search filter
+    document.getElementById('deSearchInput')?.addEventListener('keyup', function() {
+        const query = this.value.toUpperCase();
+        const rows = document.querySelectorAll('#deTableBody tr');
+        rows.forEach(r => {
+            const geneCell = r.querySelector('td strong');
+            if (geneCell) {
+                const text = geneCell.textContent || geneCell.innerText;
+                r.style.display = text.toUpperCase().indexOf(query) > -1 ? '' : 'none';
+            }
+        });
+    });
+});
+</script>
+{% endblock %}
