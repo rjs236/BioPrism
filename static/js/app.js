@@ -1,7 +1,14 @@
 // BioPrism Interactive Pipeline Engine
 
-let currentSessionId = document.getElementById('display-session-id') ? 
-    document.getElementById('display-session-id').innerText.trim() : null;
+let currentSessionId = (typeof BioPrism !== 'undefined' && BioPrism.getSessionId)
+    ? BioPrism.getSessionId()
+    : (document.getElementById('display-session-id') ? document.getElementById('display-session-id').innerText.trim() : null);
+
+if (typeof BioPrism !== 'undefined' && currentSessionId) {
+    BioPrism.setSessionId(currentSessionId);
+    const sidEl = document.getElementById('display-session-id');
+    if (sidEl) sidEl.innerText = currentSessionId;
+}
 
 // Helper: Show/Hide Spinners
 function showSpinner(msg = "Processing...") {
@@ -140,9 +147,26 @@ function handleUploadResponse(data) {
     if (data.session_id) {
         currentSessionId = data.session_id;
         document.getElementById('display-session-id').innerText = data.session_id;
+        if (typeof BioPrism !== 'undefined') BioPrism.setSessionId(data.session_id);
+    }
+    if (data.session_snapshot && typeof BioPrism !== 'undefined') {
+        BioPrism.saveSessionSnapshot(data.session_id || currentSessionId, data.session_snapshot);
+    }
+    if (data.history_record && typeof BioPrism !== 'undefined') {
+        BioPrism.saveHistoryRecord(data.history_record);
     }
     if (data.dataset_name) {
         document.getElementById('display-dataset-name').innerText = data.dataset_name;
+    }
+}
+
+function _cacheWorkspaceState(data) {
+    if (typeof BioPrism === 'undefined' || !data) return;
+    if (data.session_snapshot) {
+        BioPrism.saveSessionSnapshot(data.session_id || currentSessionId, data.session_snapshot);
+    }
+    if (data.history_record) {
+        BioPrism.saveHistoryRecord(data.history_record);
     }
 }
 
@@ -224,6 +248,7 @@ function runDifferentialExpression() {
             alert(`Differential Expression Error: ${data.message}`);
             return;
         }
+        _cacheWorkspaceState(data);
 
         const sum = data.summary || {};
         document.getElementById('kpi-de-sig').innerText = sum.significant_total || 0;
@@ -289,6 +314,7 @@ function runPathwayEnrichment() {
             alert(`Pathway Enrichment Note: ${data.message}`);
             return;
         }
+        _cacheWorkspaceState(data);
 
         const body = document.getElementById('pathways-table-body');
         body.innerHTML = '';
@@ -338,6 +364,7 @@ function runNetworkAnalysis() {
             alert(`Network Construction Note: ${data.message}`);
             return;
         }
+        _cacheWorkspaceState(data);
 
         const sum = data.summary || {};
         document.getElementById('kpi-net-nodes').innerText = sum.num_nodes || 0;
@@ -421,6 +448,7 @@ function runMLValidation() {
             alert(`Validation Error: ${data.message}`);
             return;
         }
+        _cacheWorkspaceState(data);
 
         const m = data.metrics || {};
         document.getElementById('kpi-ml-auc').innerText = m.roc_auc !== undefined ? m.roc_auc.toFixed(3) : '-';
@@ -500,16 +528,17 @@ function runMLValidation() {
 
 function generateReport() {
     showSpinner("Compiling standalone Capstone HTML analysis report...");
+    const snap = typeof BioPrism !== 'undefined' ? BioPrism.getSessionSnapshot(currentSessionId) : null;
     fetch('/api/generate-report', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ session_id: currentSessionId })
+        body: JSON.stringify({ session_id: currentSessionId, session_snapshot: snap })
     })
     .then(r => r.json())
     .then(data => {
         hideSpinner();
-        if (data.success && data.report_url) {
-            window.open(data.report_url, '_blank');
+        if (data.success && (data.preview_url || data.report_url)) {
+            window.open(`/reports?session_id=${encodeURIComponent(currentSessionId)}`, '_blank');
         } else {
             alert("Could not generate report.");
         }

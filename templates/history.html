@@ -7,10 +7,13 @@
     <div class="d-flex align-items-center justify-content-between mb-3">
         <div>
             <h3 class="fw-bold mb-1" style="color: var(--navy-dark);">Analysis Provenance & History</h3>
-            <p class="text-muted small mb-0">Browse and inspect previous transcriptomics analysis runs stored in your local SQLite database.</p>
+            <p class="text-muted small mb-0">Browse, reload, inspect reports for, or manage your executed transcriptomics analysis runs.</p>
         </div>
-        <div class="d-flex gap-2">
-            <input type="text" class="form-control form-control-sm" id="historySearchInput" placeholder="Search by dataset or gene..." style="width: 250px;">
+        <div class="d-flex gap-2 align-items-center">
+            <input type="text" class="form-control form-control-sm" id="historySearchInput" placeholder="Search by dataset or gene..." style="width: 240px;">
+            <button type="button" class="btn btn-sm btn-outline-danger" id="btnClearAllHistory">
+                <i class="bi bi-trash3 me-1"></i> Clear All
+            </button>
         </div>
     </div>
 
@@ -19,9 +22,9 @@
         <div class="bio-card-header">
             <h5 class="bio-card-title">
                 <i class="bi bi-clock-history text-secondary"></i>
-                <span>Stored Analysis Runs (SQLite Provenance)</span>
+                <span>Stored Analysis Runs (Provenance Log)</span>
             </h5>
-            <span class="badge bg-light text-dark border">{{ analyses|length if analyses else 0 }} Recorded Run(s)</span>
+            <span class="badge bg-light text-dark border" id="historyCountBadge">{{ analyses|length if analyses else 0 }} Recorded Run(s)</span>
         </div>
         <div class="table-responsive">
             <table class="bio-table" id="historyTable">
@@ -44,7 +47,7 @@
                 <tbody id="historyTableBody">
                     {% if analyses and analyses|length > 0 %}
                         {% for a in analyses %}
-                        <tr>
+                        <tr data-run-id="{{ a.id }}">
                             <td><span class="badge bg-light text-dark border">#{{ a.id }}</span></td>
                             <td><small class="text-muted">{{ a.timestamp }}</small></td>
                             <td><strong>{{ a.dataset_name }}</strong></td>
@@ -70,13 +73,13 @@
                             </td>
                             <td>
                                 <div class="btn-group btn-group-sm">
-                                    <a href="{{ url_for('pipeline') }}?session_id={{ a.id }}" class="btn btn-bio-outline py-0 px-2" title="Load into Session">
+                                    <a href="{{ url_for('pipeline') }}?session_id={{ a.id }}" class="btn btn-bio-outline py-0 px-2 btnLoadRun" data-id="{{ a.id }}" title="Load into Session">
                                         <i class="bi bi-arrow-repeat"></i> Load
                                     </a>
-                                    <a href="/api/download/html_report?session_id={{ a.id }}" class="btn btn-outline-secondary py-0 px-2" title="View Report" target="_blank">
+                                    <a href="/reports?session_id={{ a.id }}" class="btn btn-outline-secondary py-0 px-2 btnViewReportRun" data-id="{{ a.id }}" title="View Report">
                                         <i class="bi bi-file-earmark-text"></i>
                                     </a>
-                                    <button class="btn btn-outline-danger py-0 px-2 btnDeleteRun" data-id="{{ a.id }}" title="Delete">
+                                    <button type="button" class="btn btn-outline-danger py-0 px-2 btnDeleteRun" data-id="{{ a.id }}" title="Delete">
                                         <i class="bi bi-trash"></i>
                                     </button>
                                 </div>
@@ -87,7 +90,7 @@
                         <tr>
                             <td colspan="12" class="text-center py-5 text-muted">
                                 <i class="bi bi-inbox fs-2 d-block mb-2"></i>
-                                No previous analyses recorded in SQLite. Execute a complete pipeline run to preserve provenance.
+                                No previous analyses recorded yet. Run Differential Expression or Biomarker Validation to record provenance.
                             </td>
                         </tr>
                     {% endif %}
@@ -101,20 +104,142 @@
 {% block extra_scripts %}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    // Delete action
-    document.querySelectorAll('.btnDeleteRun').forEach(btn => {
-        btn.addEventListener('click', async function() {
-            const runId = this.getAttribute('data-id');
-            if (confirm(`Delete analysis record #${runId}?`)) {
-                const res = await BioPrism.apiPost('/api/history/delete', { id: runId });
-                if (res.success) {
-                    BioPrism.notify("Record deleted.", "info");
-                    this.closest('tr').remove();
-                } else {
-                    BioPrism.notify("Failed to delete record.", "error");
-                }
+    const serverAnalyses = {{ (analyses if analyses else []) | tojson }};
+    const tbody = document.getElementById('historyTableBody');
+    const countBadge = document.getElementById('historyCountBadge');
+
+    function escapeHtml(str) {
+        return String(str || '').replace(/[&<>"']/g, s => ({
+            '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+        }[s]));
+    }
+
+    function mergeAndRenderHistory() {
+        const deletedIds = new Set(BioPrism.getDeletedHistoryIds());
+        const byId = new Map();
+
+        // Client-cached records first (may reflect runs across serverless containers)
+        BioPrism.getHistoryRecords().forEach(r => {
+            if (r && r.id && !deletedIds.has(r.id)) {
+                byId.set(r.id, r);
             }
         });
+
+        // Merge server SQLite records (syncing any missing local copies)
+        (serverAnalyses || []).forEach(r => {
+            if (r && r.id && !deletedIds.has(r.id)) {
+                const prev = byId.get(r.id) || {};
+                const merged = Object.assign({}, prev, r);
+                byId.set(r.id, merged);
+                BioPrism.saveHistoryRecord(merged);
+            }
+        });
+
+        const mergedList = Array.from(byId.values()).sort((a, b) => {
+            return String(b.timestamp || '').localeCompare(String(a.timestamp || ''));
+        });
+
+        if (countBadge) {
+            countBadge.innerText = `${mergedList.length} Recorded Run(s)`;
+        }
+
+        if (mergedList.length === 0) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="12" class="text-center py-5 text-muted">
+                        <i class="bi bi-inbox fs-2 d-block mb-2"></i>
+                        No previous analyses recorded yet. Run Differential Expression or Biomarker Validation to record provenance.
+                    </td>
+                </tr>
+            `;
+            return;
+        }
+
+        tbody.innerHTML = '';
+        mergedList.forEach(a => {
+            const rocHtml = a.roc_auc
+                ? `<span class="badge bg-success-subtle text-success border border-success-subtle">${Number(a.roc_auc).toFixed(3)}</span>`
+                : `<span class="text-muted">-</span>`;
+            const accHtml = a.accuracy
+                ? `<small>${(Number(a.accuracy) * 100).toFixed(1)}%</small>`
+                : `<span class="text-muted">-</span>`;
+
+            const tr = document.createElement('tr');
+            tr.setAttribute('data-run-id', a.id);
+            tr.innerHTML = `
+                <td><span class="badge bg-light text-dark border">#${escapeHtml(a.id)}</span></td>
+                <td><small class="text-muted">${escapeHtml(a.timestamp)}</small></td>
+                <td><strong>${escapeHtml(a.dataset_name)}</strong></td>
+                <td><span class="badge bg-secondary">${escapeHtml(a.input_type || 'N/A')}</span></td>
+                <td><small>${Number(a.total_samples || 0)}</small></td>
+                <td><small>${escapeHtml(a.case_group || 'Case')} vs ${escapeHtml(a.control_group || 'Control')}</small></td>
+                <td><span class="badge badge-upreg">${Number(a.sig_genes_count || 0)} DEGs</span></td>
+                <td><small class="text-teal fw-semibold" style="color: var(--primary-teal);">${escapeHtml(a.top_hub_genes || '-')}</small></td>
+                <td><small>${escapeHtml(a.classifier_type || '-')}</small></td>
+                <td>${rocHtml}</td>
+                <td>${accHtml}</td>
+                <td>
+                    <div class="btn-group btn-group-sm">
+                        <a href="/preprocessing?session_id=${encodeURIComponent(a.id)}" class="btn btn-bio-outline py-0 px-2 btnLoadRun" data-id="${escapeHtml(a.id)}" title="Load into Session">
+                            <i class="bi bi-arrow-repeat"></i> Load
+                        </a>
+                        <a href="/reports?session_id=${encodeURIComponent(a.id)}" class="btn btn-outline-secondary py-0 px-2 btnViewReportRun" data-id="${escapeHtml(a.id)}" title="View Report">
+                            <i class="bi bi-file-earmark-text"></i>
+                        </a>
+                        <button type="button" class="btn btn-outline-danger py-0 px-2 btnDeleteRun" data-id="${escapeHtml(a.id)}" title="Delete">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </div>
+                </td>
+            `;
+            tbody.appendChild(tr);
+        });
+
+        bindRowEvents();
+    }
+
+    function bindRowEvents() {
+        document.querySelectorAll('.btnDeleteRun').forEach(btn => {
+            btn.addEventListener('click', async function() {
+                const runId = this.getAttribute('data-id');
+                if (confirm(`Delete analysis record #${runId}?`)) {
+                    const res = await BioPrism.apiPost('/api/history/delete', { id: runId });
+                    BioPrism.deleteHistoryRecord(runId);
+                    if (res.success) {
+                        BioPrism.notify("Record deleted.", "info");
+                    }
+                    mergeAndRenderHistory();
+                }
+            });
+        });
+
+        document.querySelectorAll('.btnLoadRun, .btnViewReportRun').forEach(link => {
+            link.addEventListener('click', async function(e) {
+                const runId = this.getAttribute('data-id');
+                if (!runId) return;
+                BioPrism.setSessionId(runId);
+                const snap = BioPrism.getSessionSnapshot(runId);
+                if (snap) {
+                    e.preventDefault();
+                    await fetch('/api/session/restore', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ session_id: runId, session_snapshot: snap })
+                    }).catch(() => {});
+                    window.location.href = this.getAttribute('href');
+                }
+            });
+        });
+    }
+
+    document.getElementById('btnClearAllHistory')?.addEventListener('click', async function() {
+        if (confirm("Clear all recorded analysis history runs?")) {
+            await BioPrism.apiPost('/api/history/clear-all', {});
+            BioPrism.clearHistoryRecords();
+            serverAnalyses.length = 0;
+            mergeAndRenderHistory();
+            BioPrism.notify("All analysis history cleared.", "info");
+        }
     });
 
     // Search filter
@@ -126,6 +251,8 @@ document.addEventListener('DOMContentLoaded', function() {
             r.style.display = text.toUpperCase().indexOf(query) > -1 ? '' : 'none';
         });
     });
+
+    mergeAndRenderHistory();
 });
 </script>
 {% endblock %}

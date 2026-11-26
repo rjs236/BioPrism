@@ -79,6 +79,15 @@ def init_db():
         )
     ''')
 
+    # 5. Session Snapshots table (persists session state across requests/restarts)
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS session_snapshots (
+            session_id TEXT PRIMARY KEY,
+            snapshot_json TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+    ''')
+
     # Legacy table synchronization for existing tests that expect analysis_history
     cur.execute('''
         CREATE TABLE IF NOT EXISTS analysis_history (
@@ -339,3 +348,33 @@ def set_setting(key, value):
     ''', (key, str(value), now_str))
     conn.commit()
     conn.close()
+
+def save_session_snapshot(session_id, snapshot_dict):
+    """Persist serialized session snapshot in SQLite for durability across requests."""
+    if not session_id or not snapshot_dict:
+        return
+    conn = get_db_connection()
+    cur = conn.cursor()
+    now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    cur.execute('''
+        INSERT OR REPLACE INTO session_snapshots (session_id, snapshot_json, updated_at)
+        VALUES (?, ?, ?)
+    ''', (session_id, json.dumps(snapshot_dict), now_str))
+    conn.commit()
+    conn.close()
+
+def load_session_snapshot(session_id):
+    """Load persisted session snapshot from SQLite if present."""
+    if not session_id:
+        return None
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute('SELECT snapshot_json FROM session_snapshots WHERE session_id = ?', (session_id,))
+    row = cur.fetchone()
+    conn.close()
+    if row and row[0]:
+        try:
+            return json.loads(row[0])
+        except Exception:
+            return None
+    return None

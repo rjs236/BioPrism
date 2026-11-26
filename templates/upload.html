@@ -167,6 +167,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 return;
             }
             if (res.success) {
+                if (res.session_snapshot) {
+                    BioPrism.saveSessionSnapshot(res.session_id || sid, res.session_snapshot);
+                }
                 BioPrism.notify("Dataset uploaded and validated successfully!", "success");
                 setTimeout(() => {
                     window.location.href = `/preprocessing?session_id=${sid}`;

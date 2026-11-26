@@ -198,7 +198,7 @@
                         <th>Actions</th>
                     </tr>
                 </thead>
-                <tbody>
+                <tbody id="dashboardRecentBody">
                     {% if stats.recent_runs and stats.recent_runs|length > 0 %}
                         {% for r in stats.recent_runs %}
                         <tr>
@@ -241,10 +241,89 @@
 {% block extra_scripts %}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+    const serverRecent = {{ stats.recent_runs | tojson }};
+    const deletedIds = new Set(BioPrism.getDeletedHistoryIds());
+    const byId = new Map();
+
+    BioPrism.getHistoryRecords().forEach(r => {
+        if (r && r.id && !deletedIds.has(r.id)) byId.set(r.id, r);
+    });
+    (serverRecent || []).forEach(r => {
+        if (r && r.id && !deletedIds.has(r.id)) {
+            const merged = Object.assign({}, byId.get(r.id) || {}, r);
+            byId.set(r.id, merged);
+            BioPrism.saveHistoryRecord(merged);
+        }
+    });
+
+    const allRuns = Array.from(byId.values()).sort((a, b) =>
+        String(b.timestamp || '').localeCompare(String(a.timestamp || ''))
+    );
+
+    if (allRuns.length > (serverRecent || []).length) {
+        const datasets = new Set();
+        const hubs = new Set();
+        const paths = new Set();
+        let totalDegs = 0;
+        const localTypeCounts = {};
+
+        allRuns.forEach(r => {
+            if (r.dataset_name) datasets.add(r.dataset_name);
+            totalDegs += Number(r.sig_genes_count || 0);
+            if (r.top_hub_genes) {
+                String(r.top_hub_genes).split(',').map(s => s.trim().toUpperCase()).filter(Boolean).forEach(g => hubs.add(g));
+            }
+            if (r.top_pathways) {
+                String(r.top_pathways).split(',').map(s => s.trim()).filter(Boolean).forEach(p => paths.add(p));
+            }
+            const t = r.input_type || 'N/A';
+            localTypeCounts[t] = (localTypeCounts[t] || 0) + 1;
+        });
+
+        document.getElementById('kpiDatasets').innerText = Math.max(Number(document.getElementById('kpiDatasets').innerText || 0), datasets.size);
+        document.getElementById('kpiDEGs').innerText = Math.max(Number(document.getElementById('kpiDEGs').innerText || 0), totalDegs);
+        document.getElementById('kpiPathways').innerText = Math.max(Number(document.getElementById('kpiPathways').innerText || 0), paths.size);
+        document.getElementById('kpiBiomarkers').innerText = Math.max(Number(document.getElementById('kpiBiomarkers').innerText || 0), hubs.size);
+
+        const tbody = document.getElementById('dashboardRecentBody');
+        if (tbody) {
+            tbody.innerHTML = '';
+            allRuns.slice(0, 6).forEach(r => {
+                const rocHtml = r.roc_auc
+                    ? `<span class="badge bg-success-subtle text-success border border-success-subtle">${Number(r.roc_auc).toFixed(3)}</span>`
+                    : `<span class="text-muted">-</span>`;
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td><span class="badge bg-light text-dark border">#${r.id}</span></td>
+                    <td><small class="text-muted">${r.timestamp || ''}</small></td>
+                    <td><strong>${r.dataset_name || ''}</strong></td>
+                    <td><span class="badge bg-secondary">${r.input_type || 'N/A'}</span></td>
+                    <td><small>${r.case_group || 'Case'} vs ${r.control_group || 'Control'}</small></td>
+                    <td><span class="badge badge-upreg">${r.sig_genes_count || 0} DEGs</span></td>
+                    <td><small class="text-teal fw-semibold" style="color: var(--primary-teal);">${r.top_hub_genes || 'N/A'}</small></td>
+                    <td>${rocHtml}</td>
+                    <td>
+                        <a href="/pipeline?session_id=${encodeURIComponent(r.id)}" class="btn btn-sm btn-bio-outline py-0 px-2" title="Reload into Workspace">
+                            <i class="bi bi-arrow-repeat"></i> Load
+                        </a>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+    }
+
     // 1. Data Type Distribution Donut Chart
-    const typeCounts = {{ stats.type_counts | tojson }};
-    const labels = Object.keys(typeCounts).length > 0 ? Object.keys(typeCounts) : ['Microarray Log2', 'RNA-seq Counts'];
-    const values = Object.keys(typeCounts).length > 0 ? Object.values(typeCounts) : [1, 1];
+    const serverTypeCounts = {{ stats.type_counts | tojson }};
+    const mergedTypeCounts = Object.keys(serverTypeCounts).length > 0 ? serverTypeCounts : {};
+    if (Object.keys(mergedTypeCounts).length === 0 && allRuns.length > 0) {
+        allRuns.forEach(r => {
+            const t = r.input_type || 'microarray_log2';
+            mergedTypeCounts[t] = (mergedTypeCounts[t] || 0) + 1;
+        });
+    }
+    const labels = Object.keys(mergedTypeCounts).length > 0 ? Object.keys(mergedTypeCounts) : ['Microarray Log2', 'RNA-seq Counts'];
+    const values = Object.keys(mergedTypeCounts).length > 0 ? Object.values(mergedTypeCounts) : [1, 1];
 
     Plotly.newPlot('typeDistributionChart', [{
         labels: labels,
@@ -261,7 +340,8 @@ document.addEventListener('DOMContentLoaded', function() {
     }, { responsive: true, displayModeBar: false });
 
     // 2. Performance Trend Line Chart
-    const trendData = {{ stats.trend_data | tojson }};
+    const serverTrendData = {{ stats.trend_data | tojson }};
+    const trendData = serverTrendData.length > 0 ? serverTrendData : allRuns.slice().reverse().slice(-10);
     const xDates = trendData.length > 0 ? trendData.map(d => d.timestamp) : ['Run 1', 'Run 2', 'Run 3'];
     const yAuc = trendData.length > 0 ? trendData.map(d => d.roc_auc) : [0.88, 0.94, 0.96];
     const yAcc = trendData.length > 0 ? trendData.map(d => d.accuracy) : [0.85, 0.90, 0.92];

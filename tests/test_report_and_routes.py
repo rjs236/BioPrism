@@ -118,3 +118,75 @@ def test_flask_demo_and_download_routes(flask_client):
     # Download non-existent file
     resp_404 = flask_client.get("/api/download/invalid_file_type")
     assert resp_404.status_code == 404
+
+
+def test_reports_no_auto_download_and_results_persistence(flask_client):
+    """Ensure /reports does not auto-download, inline preview works for PDF print, HTML/CSV exports include results, and history records runs."""
+    sid = "reg_test_sess"
+
+    # 1. /reports page must NOT embed attachment download url in iframe src
+    r_page = flask_client.get(f"/reports?session_id={sid}")
+    assert r_page.status_code == 200
+    assert b'iframe id="reportFrame" src="/api/download/html_report' not in r_page.data
+
+    # 2. Run pipeline steps via Flask APIs
+    r_demo = flask_client.post("/api/load-demo", json={"type": "microarray", "session_id": sid})
+    assert r_demo.status_code == 200
+    assert r_demo.get_json()["success"] is True
+
+    r_de = flask_client.post("/api/run-de", json={
+        "session_id": sid,
+        "case_group": "Tumor",
+        "control_group": "Normal",
+        "method": "python_ttest",
+        "fdr_threshold": 0.05,
+        "log2fc_threshold": 1.0
+    })
+    assert r_de.status_code == 200
+    de_json = r_de.get_json()
+    assert de_json["success"] is True
+    snap = de_json["session_snapshot"]
+
+    r_net = flask_client.post("/api/run-network", json={"session_id": sid, "confidence_score": 400})
+    assert r_net.status_code == 200
+    net_json = r_net.get_json()
+    assert net_json["success"] is True
+    snap = net_json["session_snapshot"]
+
+    # 3. Verify Analysis History already contains the run after DE/Network
+    r_hist = flask_client.get("/history")
+    assert r_hist.status_code == 200
+    assert sid.encode() in r_hist.data
+    assert b"Oncogenomics Microarray Demo" in r_hist.data
+
+    # 4. Simulate serverless cold container (wipe SESSIONS in-memory dict)
+    from app import SESSIONS
+    SESSIONS.pop(sid, None)
+
+    # 5. Inline preview must NOT have Content-Disposition: attachment and MUST contain results
+    r_prev = flask_client.get(f"/api/preview/html_report?session_id={sid}")
+    assert r_prev.status_code == 200
+    assert "attachment" not in r_prev.headers.get("Content-Disposition", "").lower()
+    assert b"Oncogenomics Microarray Demo" in r_prev.data
+    assert b"45" in r_prev.data  # 45 significant DEGs
+
+    # 6. POST /api/generate-report with snapshot works even if both RAM and /tmp are cold
+    SESSIONS.pop(sid, None)
+    r_gen = flask_client.post("/api/generate-report", json={"session_id": sid, "session_snapshot": snap})
+    assert r_gen.status_code == 200
+    gen_data = r_gen.get_json()
+    assert gen_data["success"] is True
+    assert "Oncogenomics Microarray Demo" in gen_data["report_html"]
+
+    # 7. Explicit HTML download & CSV downloads with POST snapshot succeed with real data
+    r_dl = flask_client.post(f"/api/download/html_report?session_id={sid}", json={"session_id": sid, "session_snapshot": snap})
+    assert r_dl.status_code == 200
+    assert "attachment" in r_dl.headers.get("Content-Disposition", "").lower()
+    assert b"Oncogenomics Microarray Demo" in r_dl.data
+
+    r_de_csv = flask_client.post(f"/api/download/de_results?session_id={sid}", json={"session_id": sid, "session_snapshot": snap})
+    assert r_de_csv.status_code == 200
+    assert b"log2FoldChange" in r_de_csv.data
+
+    # Clean up test run from history
+    flask_client.post("/api/history/delete", json={"id": sid})

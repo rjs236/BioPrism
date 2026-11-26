@@ -11,10 +11,18 @@ def generate_html_report(run_metadata, preproc_info, de_summary, pathway_results
     Generate an elegant, comprehensive, standalone HTML report for Capstone presentation.
     Includes all 9 required sections and print-to-PDF CSS.
     """
+    run_metadata = run_metadata or {}
+    preproc_info = preproc_info or {}
+    de_summary = de_summary or {}
+    pathway_results = pathway_results or []
+    network_summary = network_summary or {}
+    hub_genes = hub_genes or []
+    ml_metrics = ml_metrics or {}
+
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     python_ver = sys.version.split()[0]
     run_id = run_metadata.get('run_id', 'DEMO')
-    dataset_name = run_metadata.get('dataset', 'Custom Transcriptomics Dataset')
+    dataset_name = run_metadata.get('dataset') or 'Custom Transcriptomics Dataset'
 
     # 1. Format Top DE Table
     top_de = de_summary.get('top_de_genes', [])[:12]
@@ -64,7 +72,7 @@ def generate_html_report(run_metadata, preproc_info, de_summary, pathway_results
 
     # 4. Format ML Metrics
     ml_html = ""
-    if ml_metrics and ml_metrics.get('success', False):
+    if ml_metrics and (ml_metrics.get('success', False) or ml_metrics.get('metrics')):
         m = ml_metrics.get('metrics', {})
         cm = m.get('confusion_matrix', {})
         ml_html = f"""
@@ -283,9 +291,35 @@ def generate_html_report(run_metadata, preproc_info, de_summary, pathway_results
             float: right;
         }}
         @media print {{
-            body {{ padding: 0; background: white; }}
-            .report-container {{ box-shadow: none; border: none; padding: 0; }}
-            .print-btn {{ display: none; }}
+            * {{
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+            }}
+            @page {{
+                margin: 12mm;
+                size: A4 portrait;
+            }}
+            body {{
+                padding: 0;
+                margin: 0;
+                background: #ffffff !important;
+                color: #1e293b !important;
+            }}
+            .report-container {{
+                box-shadow: none !important;
+                border: none !important;
+                padding: 0.5rem !important;
+                max-width: 100% !important;
+            }}
+            .print-btn {{ display: none !important; }}
+            .metric-card, .ai-box, .disclaimer-box, tr {{
+                page-break-inside: avoid;
+                break-inside: avoid;
+            }}
+            .section-title {{
+                page-break-after: avoid;
+                break-after: avoid;
+            }}
         }}
     </style>
 </head>
@@ -371,7 +405,7 @@ def generate_html_report(run_metadata, preproc_info, de_summary, pathway_results
         <div class="section-title">5. Protein-Protein Interaction Network Analysis</div>
         <p><strong>Database:</strong> STRING DB (Taxonomy 9606, Homo sapiens)<br>
         <strong>Confidence Score Threshold:</strong> {network_summary.get('confidence_score_threshold', 400)}<br>
-        <strong>Topology:</strong> {network_summary.get('total_nodes', 0)} nodes, {network_summary.get('total_edges', 0)} edges, Density: {network_summary.get('density', 0.0)}</p>
+        <strong>Topology:</strong> {network_summary.get('total_nodes', network_summary.get('num_nodes', 0))} nodes, {network_summary.get('total_edges', network_summary.get('num_edges', 0))} edges, Density: {network_summary.get('density', 0.0)}</p>
 
         <!-- 6. Candidate Biomarker Evaluation -->
         <div class="section-title">6. Candidate Biomarker Hub Prioritization</div>
