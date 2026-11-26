@@ -426,6 +426,16 @@ def help_page():
 
 # ----------------- MODULE 1: UPLOAD & PREPROCESSING APIS -----------------
 
+def _reset_downstream_session(sess):
+    """Clear downstream analytical state when a new dataset is loaded into a session."""
+    for key in [
+        'de_summary', 'de_df', 'volcano_plot',
+        'pathway_results', 'pathway_bar_plot',
+        'network_summary', 'hub_genes', 'network_edges', 'network_json',
+        'ml_metrics'
+    ]:
+        sess[key] = None
+
 @app.route('/api/session/restore', methods=['POST'])
 def api_session_restore():
     """Restore session state from client snapshot into active server container & SQLite."""
@@ -458,6 +468,7 @@ def api_load_demo():
 
     result = validate_and_preprocess(expr_path, meta_path, input_type=inferred, output_dir=sess['dir'])
     if result['success']:
+        _reset_downstream_session(sess)
         sess['dataset_name'] = dataset_name
         sess['preproc_info'] = result['info']
         sess['expr_preview'] = result.get('expr_preview')
@@ -473,6 +484,7 @@ def api_load_demo():
         except Exception:
             pass
         result['session_snapshot'] = snap
+        result['reset_snapshot'] = True
 
     return jsonify(result)
 
@@ -490,6 +502,7 @@ def api_load_geo():
 
     result = validate_and_preprocess(geo_res['expr_path'], geo_res['meta_path'], input_type=geo_res['type'], output_dir=sess['dir'])
     if result['success']:
+        _reset_downstream_session(sess)
         sess['dataset_name'] = geo_res['title']
         sess['preproc_info'] = result['info']
         sess['expr_preview'] = result.get('expr_preview')
@@ -505,6 +518,7 @@ def api_load_geo():
         except Exception:
             pass
         result['session_snapshot'] = snap
+        result['reset_snapshot'] = True
 
     return jsonify(result)
 
@@ -536,6 +550,7 @@ def api_upload():
 
     result = validate_and_preprocess(expr_path, meta_path, input_type=input_type, handle_missing=missing_strategy, output_dir=sess['dir'])
     if result['success']:
+        _reset_downstream_session(sess)
         sess['dataset_name'] = expr_file.filename
         sess['preproc_info'] = result['info']
         sess['expr_preview'] = result.get('expr_preview')
@@ -551,6 +566,7 @@ def api_upload():
         except Exception:
             pass
         result['session_snapshot'] = snap
+        result['reset_snapshot'] = True
 
     return jsonify(result)
 

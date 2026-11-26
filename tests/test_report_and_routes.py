@@ -188,5 +188,27 @@ def test_reports_no_auto_download_and_results_persistence(flask_client):
     assert r_de_csv.status_code == 200
     assert b"log2FoldChange" in r_de_csv.data
 
+    # 8. Cross-container merge check: ensure running validation preserves network_summary & hub_genes
+    SESSIONS.pop(sid, None)
+    r_val = flask_client.post("/api/run-validation", json={
+        "session_id": sid,
+        "candidate_genes": ["TP53", "AKT1"],
+        "classifier": "logistic_regression",
+        "cv_splits": 3,
+        "session_snapshot": snap
+    })
+    assert r_val.status_code == 200
+    val_json = r_val.get_json()
+    assert val_json["success"] is True
+    merged_snap = val_json["session_snapshot"]
+    assert merged_snap.get("network_summary", {}).get("total_nodes", 0) > 0
+    assert len(merged_snap.get("hub_genes", [])) > 0
+
+    r_gen2 = flask_client.post("/api/generate-report", json={"session_id": sid, "session_snapshot": merged_snap})
+    assert r_gen2.status_code == 200
+    html2 = r_gen2.get_json()["report_html"]
+    assert "0 nodes, 0 edges" not in html2
+    assert "No hub genes identified" not in html2
+
     # Clean up test run from history
     flask_client.post("/api/history/delete", json={"id": sid})

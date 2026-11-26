@@ -57,16 +57,22 @@ const BioPrism = {
         });
     },
 
-    // Persist lightweight session snapshot in localStorage (resilient to serverless cold starts)
-    saveSessionSnapshot: function(sid, snapshot) {
+    // Persist lightweight session snapshot in localStorage (merges non-null fields unless replace=true)
+    saveSessionSnapshot: function(sid, snapshot, replace = false) {
         if (!sid || !snapshot) return;
         const key = 'bioprism_session_' + sid;
         try {
-            let toStore = Object.assign({}, snapshot);
+            const existing = replace ? {} : (this.getSessionSnapshot(sid) || {});
+            let toStore = Object.assign({}, existing);
+            Object.keys(snapshot).forEach(k => {
+                if (snapshot[k] !== null && snapshot[k] !== undefined) {
+                    toStore[k] = snapshot[k];
+                }
+            });
             let serialized = JSON.stringify(toStore);
-            // If > 2.2 MB, compact bulky plot traces/raw CSV before caching
+            // If > 2.2 MB, compact bulky plot traces before caching
             if (serialized.length > 2200000) {
-                toStore = Object.assign({}, snapshot, {
+                toStore = Object.assign({}, toStore, {
                     volcano_plot: null,
                     pathway_bar_plot: null,
                     network_json: null
@@ -81,23 +87,19 @@ const BioPrism = {
             }
             localStorage.setItem(key, serialized);
         } catch (err) {
-            // Quota exceeded fallback: prune oldest cached sessions
+            // Quota exceeded fallback: prune oldest cached sessions and keep structured results
             try {
                 Object.keys(localStorage).forEach(k => {
                     if (k.startsWith('bioprism_session_') && k !== key) {
                         localStorage.removeItem(k);
                     }
                 });
-                localStorage.setItem(key, JSON.stringify({
-                    session_id: snapshot.session_id,
-                    dataset_name: snapshot.dataset_name,
-                    preproc_info: snapshot.preproc_info,
-                    de_summary: snapshot.de_summary,
-                    pathway_results: snapshot.pathway_results,
-                    network_summary: snapshot.network_summary,
-                    hub_genes: snapshot.hub_genes,
-                    ml_metrics: snapshot.ml_metrics
-                }));
+                const existing = replace ? {} : (this.getSessionSnapshot(sid) || {});
+                const base = Object.assign({}, existing);
+                ['session_id', 'dataset_name', 'preproc_info', 'de_summary', 'pathway_results', 'network_summary', 'hub_genes', 'ml_metrics'].forEach(k => {
+                    if (snapshot[k] !== null && snapshot[k] !== undefined) base[k] = snapshot[k];
+                });
+                localStorage.setItem(key, JSON.stringify(base));
             } catch (e2) {}
         }
     },
@@ -110,6 +112,41 @@ const BioPrism = {
         } catch (e) {
             return null;
         }
+    },
+
+    // Compact snapshot (without heavy plotly traces) for syncing state across serverless lambdas
+    getCompactSyncSnapshot: function(sid) {
+        const snap = this.getSessionSnapshot(sid);
+        if (!snap) return null;
+        const compact = {
+            session_id: snap.session_id,
+            dataset_name: snap.dataset_name,
+            preproc_info: snap.preproc_info,
+            pathway_results: snap.pathway_results,
+            network_summary: snap.network_summary,
+            hub_genes: snap.hub_genes,
+            network_edges: snap.network_edges,
+            processed_expr_csv: snap.processed_expr_csv,
+            processed_meta_csv: snap.processed_meta_csv,
+            de_csv_text: snap.de_csv_text,
+            hubs_csv_text: snap.hubs_csv_text,
+            edges_csv_text: snap.edges_csv_text,
+            metrics_csv_text: snap.metrics_csv_text
+        };
+        if (snap.de_summary) {
+            compact.de_summary = Object.assign({}, snap.de_summary);
+            delete compact.de_summary.heatmap_plot;
+            delete compact.de_summary.pca_plot;
+        }
+        if (snap.ml_metrics) {
+            compact.ml_metrics = {
+                success: snap.ml_metrics.success,
+                cv_method: snap.ml_metrics.cv_method,
+                metrics: snap.ml_metrics.metrics,
+                independent_validation: snap.ml_metrics.independent_validation
+            };
+        }
+        return compact;
     },
 
     // Client-side history synchronization (merges cleanly with server SQLite provenance)
@@ -293,9 +330,21 @@ const BioPrism = {
         Plotly.newPlot(elementId, data, layout, { responsive: true, displayModeBar: true });
     },
 
-    // Fetch JSON helper with automatic snapshot persistence & cold-start session restoration
+    // Fetch JSON helper with automatic snapshot sync, merge persistence, & cold-start restoration
     apiPost: async function(url, payload) {
         const activeSid = (payload && payload.session_id) || this.getSessionId();
+        const statefulEndpoints = [
+            '/api/run-de', '/api/run-enrichment', '/api/run-network',
+            '/api/run-validation', '/api/ai/chat', '/api/generate-report'
+        ];
+        let requestPayload = Object.assign({}, payload || {});
+        if (statefulEndpoints.includes(url) && !requestPayload.session_snapshot && activeSid) {
+            const compactSnap = this.getCompactSyncSnapshot(activeSid);
+            if (compactSnap) {
+                requestPayload.session_snapshot = compactSnap;
+            }
+        }
+
         const sendReq = async (bodyObj) => {
             const res = await fetch(url, {
                 method: 'POST',
@@ -312,18 +361,18 @@ const BioPrism = {
         };
 
         try {
-            let { data } = await sendReq(payload || {});
-            // If server container is stateless/cold, attach client snapshot and retry once
+            let { data } = await sendReq(requestPayload);
+            // If server container is stateless/cold, attach full snapshot and retry once
             if (data && data.needs_restore && activeSid) {
                 const snap = this.getSessionSnapshot(activeSid);
                 if (snap) {
-                    const retryPayload = Object.assign({}, payload, { session_snapshot: snap });
+                    const retryPayload = Object.assign({}, requestPayload, { session_snapshot: snap });
                     ({ data } = await sendReq(retryPayload));
                 }
             }
 
             if (data && data.session_snapshot && activeSid) {
-                this.saveSessionSnapshot(data.session_id || activeSid, data.session_snapshot);
+                this.saveSessionSnapshot(data.session_id || activeSid, data.session_snapshot, Boolean(data.reset_snapshot));
             }
             if (data && data.history_record) {
                 this.saveHistoryRecord(data.history_record);

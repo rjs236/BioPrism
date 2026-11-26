@@ -168,7 +168,7 @@ document.addEventListener('DOMContentLoaded', function() {
             }
             if (res.success) {
                 if (res.session_snapshot) {
-                    BioPrism.saveSessionSnapshot(res.session_id || sid, res.session_snapshot);
+                    BioPrism.saveSessionSnapshot(res.session_id || sid, res.session_snapshot, true);
                 }
                 BioPrism.notify("Dataset uploaded and validated successfully!", "success");
                 setTimeout(() => {

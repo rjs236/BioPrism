@@ -219,6 +219,15 @@
 document.addEventListener('DOMContentLoaded', function() {
     const sid = BioPrism.getSessionId();
 
+    // Ensure candidate hub genes populate from client snapshot if rendered on a separate container
+    const candInput = document.getElementById('candidateGenesInput');
+    if (candInput && !candInput.value.trim()) {
+        const snap = BioPrism.getSessionSnapshot(sid);
+        if (snap && snap.hub_genes && snap.hub_genes.length > 0) {
+            candInput.value = snap.hub_genes.slice(0, 6).map(h => h.Gene).join(', ');
+        }
+    }
+
     {% if session and session.ml_metrics %}
         {% if session.ml_metrics.roc_plot %}
             BioPrism.renderPlotly('rocPlotContainer', {{ session.ml_metrics.roc_plot | tojson }});

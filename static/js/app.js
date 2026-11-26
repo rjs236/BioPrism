@@ -150,7 +150,7 @@ function handleUploadResponse(data) {
         if (typeof BioPrism !== 'undefined') BioPrism.setSessionId(data.session_id);
     }
     if (data.session_snapshot && typeof BioPrism !== 'undefined') {
-        BioPrism.saveSessionSnapshot(data.session_id || currentSessionId, data.session_snapshot);
+        BioPrism.saveSessionSnapshot(data.session_id || currentSessionId, data.session_snapshot, true);
     }
     if (data.history_record && typeof BioPrism !== 'undefined') {
         BioPrism.saveHistoryRecord(data.history_record);
@@ -163,11 +163,23 @@ function handleUploadResponse(data) {
 function _cacheWorkspaceState(data) {
     if (typeof BioPrism === 'undefined' || !data) return;
     if (data.session_snapshot) {
-        BioPrism.saveSessionSnapshot(data.session_id || currentSessionId, data.session_snapshot);
+        BioPrism.saveSessionSnapshot(data.session_id || currentSessionId, data.session_snapshot, Boolean(data.reset_snapshot));
     }
     if (data.history_record) {
         BioPrism.saveHistoryRecord(data.history_record);
     }
+}
+
+async function _pipelinePost(url, payload) {
+    if (typeof BioPrism !== 'undefined' && BioPrism.apiPost) {
+        return await BioPrism.apiPost(url, payload);
+    }
+    const r = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    });
+    return await r.json();
 }
 
 // 1-Click Demo Loader
@@ -229,19 +241,14 @@ function runDifferentialExpression() {
 
     showSpinner(`Executing ${method.toUpperCase()} differential expression model...`);
 
-    fetch('/api/run-de', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            session_id: currentSessionId,
-            case_group: caseGrp,
-            control_group: ctrlGrp,
-            method: method,
-            fdr_threshold: fdr,
-            log2fc_threshold: fc
-        })
+    _pipelinePost('/api/run-de', {
+        session_id: currentSessionId,
+        case_group: caseGrp,
+        control_group: ctrlGrp,
+        method: method,
+        fdr_threshold: fdr,
+        log2fc_threshold: fc
     })
-    .then(r => r.json())
     .then(data => {
         hideSpinner();
         if (!data.success) {
@@ -302,12 +309,7 @@ function runPathwayEnrichment() {
     const db = document.getElementById('enrichment-db-select').value;
     showSpinner(`Querying GSEApy / Biological pathways (${db})...`);
 
-    fetch('/api/run-enrichment', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ session_id: currentSessionId, gene_set: db })
-    })
-    .then(r => r.json())
+    _pipelinePost('/api/run-enrichment', { session_id: currentSessionId, gene_set: db })
     .then(data => {
         hideSpinner();
         if (!data.success) {
@@ -348,16 +350,11 @@ function runNetworkAnalysis() {
 
     showSpinner("Submitting genes to STRING DB API & computing NetworkX graph centralities...");
 
-    fetch('/api/run-network', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            session_id: currentSessionId,
-            species: species,
-            confidence_score: conf
-        })
+    _pipelinePost('/api/run-network', {
+        session_id: currentSessionId,
+        species: species,
+        confidence_score: conf
     })
-    .then(r => r.json())
     .then(data => {
         hideSpinner();
         if (!data.success) {
@@ -430,18 +427,13 @@ function runMLValidation() {
 
     showSpinner("Executing Stratified Cross-Validation with strict leakage prevention...");
 
-    fetch('/api/run-validation', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            session_id: currentSessionId,
-            selected_genes: genes,
-            classifier: clf,
-            cv_splits: splits,
-            use_independent_cohort: useIndep
-        })
+    _pipelinePost('/api/run-validation', {
+        session_id: currentSessionId,
+        selected_genes: genes,
+        classifier: clf,
+        cv_splits: splits,
+        use_independent_cohort: useIndep
     })
-    .then(r => r.json())
     .then(data => {
         hideSpinner();
         if (!data.success) {
