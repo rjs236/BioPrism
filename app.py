@@ -230,7 +230,7 @@ def sync_analysis_history(sess):
 
     record = {
         'id': sess['session_id'],
-        'timestamp': datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        'timestamp': datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         'dataset_name': sess.get('dataset_name', 'Unknown'),
         'input_type': preproc.get('inferred_type', 'N/A'),
         'total_genes': preproc.get('num_genes', 0),

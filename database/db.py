@@ -118,8 +118,8 @@ def save_analysis_run(run_data):
     """
     conn = get_db_connection()
     cur = conn.cursor()
-    run_id = run_data.get('id', datetime.datetime.now().strftime("%Y%m%d%H%M%S"))
-    now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    run_id = run_data.get('id', datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d%H%M%S"))
+    now_str = run_data.get('timestamp') or datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
     top_hubs_str = run_data.get('top_hub_genes', '')
     if isinstance(top_hubs_str, list):

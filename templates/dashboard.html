@@ -260,6 +260,14 @@ document.addEventListener('DOMContentLoaded', function() {
         String(b.timestamp || '').localeCompare(String(a.timestamp || ''))
     );
 
+    // Format server-rendered recent run timestamps into browser's local timezone
+    document.querySelectorAll('#dashboardRecentBody tr').forEach(row => {
+        const tsEl = row.querySelector('td:nth-child(2) small');
+        if (tsEl && tsEl.innerText.trim()) {
+            tsEl.innerText = BioPrism.formatLocalTimestamp(tsEl.innerText.trim());
+        }
+    });
+
     if (allRuns.length > (serverRecent || []).length) {
         const datasets = new Set();
         const hubs = new Set();
@@ -295,7 +303,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 const tr = document.createElement('tr');
                 tr.innerHTML = `
                     <td><span class="badge bg-light text-dark border">#${r.id}</span></td>
-                    <td><small class="text-muted">${r.timestamp || ''}</small></td>
+                    <td><small class="text-muted">${BioPrism.formatLocalTimestamp(r.timestamp || '')}</small></td>
                     <td><strong>${r.dataset_name || ''}</strong></td>
                     <td><span class="badge bg-secondary">${r.input_type || 'N/A'}</span></td>
                     <td><small>${r.case_group || 'Case'} vs ${r.control_group || 'Control'}</small></td>
@@ -342,7 +350,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // 2. Performance Trend Line Chart
     const serverTrendData = {{ stats.trend_data | tojson }};
     const trendData = serverTrendData.length > 0 ? serverTrendData : allRuns.slice().reverse().slice(-10);
-    const xDates = trendData.length > 0 ? trendData.map(d => d.timestamp) : ['Run 1', 'Run 2', 'Run 3'];
+    const xDates = trendData.length > 0 ? trendData.map(d => BioPrism.formatLocalTimestamp(d.timestamp)) : ['Run 1', 'Run 2', 'Run 3'];
     const yAuc = trendData.length > 0 ? trendData.map(d => d.roc_auc) : [0.88, 0.94, 0.96];
     const yAcc = trendData.length > 0 ? trendData.map(d => d.accuracy) : [0.85, 0.90, 0.92];
 

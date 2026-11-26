@@ -168,7 +168,7 @@ document.addEventListener('DOMContentLoaded', function() {
             tr.setAttribute('data-run-id', a.id);
             tr.innerHTML = `
                 <td><span class="badge bg-light text-dark border">#${escapeHtml(a.id)}</span></td>
-                <td><small class="text-muted">${escapeHtml(a.timestamp)}</small></td>
+                <td><small class="text-muted">${escapeHtml(BioPrism.formatLocalTimestamp(a.timestamp))}</small></td>
                 <td><strong>${escapeHtml(a.dataset_name)}</strong></td>
                 <td><span class="badge bg-secondary">${escapeHtml(a.input_type || 'N/A')}</span></td>
                 <td><small>${Number(a.total_samples || 0)}</small></td>

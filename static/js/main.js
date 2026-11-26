@@ -24,6 +24,23 @@ const BioPrism = {
         }
     },
 
+    // Convert ISO-8601 UTC timestamp (or legacy UTC string) into user's local YYYY-MM-DD HH:MM:SS
+    formatLocalTimestamp: function(ts) {
+        if (!ts) return '';
+        const s = String(ts).trim();
+        let d;
+        if (/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}$/.test(s)) {
+            // Treat bare server timestamps on non-local hosts (Vercel UTC) as UTC
+            const isLocalHost = ['localhost', '127.0.0.1'].includes(window.location.hostname);
+            d = new Date(s.replace(' ', 'T') + (isLocalHost ? '' : 'Z'));
+        } else {
+            d = new Date(s);
+        }
+        if (isNaN(d.getTime())) return s;
+        const pad = n => String(n).padStart(2, '0');
+        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+    },
+
     // Ensure session_id is appended to URL if navigating
     syncUrlSession: function() {
         const urlParams = new URLSearchParams(window.location.search);

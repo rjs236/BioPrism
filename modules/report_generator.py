@@ -19,7 +19,9 @@ def generate_html_report(run_metadata, preproc_info, de_summary, pathway_results
     hub_genes = hub_genes or []
     ml_metrics = ml_metrics or {}
 
-    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    now_utc = datetime.datetime.now(datetime.timezone.utc)
+    timestamp = now_utc.strftime("%Y-%m-%d %H:%M:%S")
+    timestamp_iso = now_utc.strftime("%Y-%m-%dT%H:%M:%SZ")
     python_ver = sys.version.split()[0]
     run_id = run_metadata.get('run_id', 'DEMO')
     dataset_name = run_metadata.get('dataset') or 'Custom Transcriptomics Dataset'
@@ -333,7 +335,7 @@ def generate_html_report(run_metadata, preproc_info, de_summary, pathway_results
             </div>
             <div class="header-meta">
                 <div><strong>Run ID:</strong> {run_id}</div>
-                <div><strong>Generated:</strong> {timestamp}</div>
+                <div><strong>Generated:</strong> <span id="reportGeneratedTs" data-utc="{timestamp_iso}">{timestamp} UTC</span></div>
                 <div><strong>Python:</strong> {python_ver} | <strong>R:</strong> Limma / DESeq2</div>
             </div>
         </div>
@@ -436,6 +438,17 @@ def generate_html_report(run_metadata, preproc_info, de_summary, pathway_results
             3. <strong>Reproducibility:</strong> Random states (seed=42) were fixed across cross-validation splits and layout models for deterministic reproducibility.
         </div>
     </div>
+    <script>
+        (function() {{
+            var el = document.getElementById('reportGeneratedTs');
+            if (!el) return;
+            var d = new Date(el.getAttribute('data-utc') || '');
+            if (!isNaN(d.getTime())) {{
+                var p = function(n) {{ return String(n).padStart(2, '0'); }};
+                el.textContent = d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
+            }}
+        }})();
+    </script>
 </body>
 </html>
 """
